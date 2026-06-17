@@ -32,6 +32,7 @@ type dict struct {
 	// Generelt
 	OK, Cancel, Close, Save, Back, Next, Finish, Browse string
 	Working, Done, Error                                string
+	Copy, DBInfoTitle                                   string
 
 	// CLI-lokalisering
 	CLINotFound     string
@@ -74,10 +75,11 @@ type dict struct {
 	Clear        string
 
 	// Enheder-fane
-	ColEnrolled string
-	ColLastSeen string
-	ThisDevice  string
-	DevCount    string // "%d"
+	ColEnrolled     string
+	ColLastSeen     string
+	ThisDevice      string
+	DevCount        string // "%d"
+	DeviceInfoTitle string
 
 	AddDevice           string
 	AddDeviceCreate     string
@@ -88,25 +90,25 @@ type dict struct {
 	SelectDeviceFirst   string
 	CannotRemoveCurrent string
 	ConfirmRemoveDevice string // "%s" = enhedsnavn
-	StatusBox    string
-	NotEnrolled  string
-	Refresh      string
-	Sync         string
-	SyncSelected string
-	SyncAll      string
-	SelectFirst  string
-	AddDatabase   string
-	ForgetDatabase string
-	ConfirmForget string // "%s" = db-navn
-	NoDatabases   string
-	DBCount       string
-	ColName      string
-	ColStatus    string
-	ColID        string
-	ColCreated   string
-	ColPath      string
-	BoundLocally string
-	OnServerOnly string
+	StatusBox           string
+	NotEnrolled         string
+	Refresh             string
+	Sync                string
+	SyncSelected        string
+	SyncAll             string
+	SelectFirst         string
+	AddDatabase         string
+	ForgetDatabase      string
+	ConfirmForget       string // "%s" = db-navn
+	NoDatabases         string
+	DBCount             string
+	ColName             string
+	ColStatus           string
+	ColID               string
+	ColCreated          string
+	ColPath             string
+	BoundLocally        string
+	OnServerOnly        string
 
 	// Detalje-panel: medlemmer/enheder koblet til den valgte database.
 	MembersTitle       string
@@ -115,14 +117,30 @@ type dict struct {
 	MemberCount        string // "%d"
 	MembersNeedBound   string
 	MembersUnavailable string
+	NoMembers          string
 	ColRole            string
 	ColUser            string
 	ColDisplay         string
 	ColAdded           string
-	MasterPwd    string
-	MasterPwdFor string
-	Language     string
-	ResetEnroll  string
+
+	// Deling (share / unshare / init-shared)
+	ShareDatabase     string
+	ShareTitle        string // "%s" = db-navn
+	ShareWith         string
+	RemoveMember      string
+	SelectMemberFirst string
+	CannotRemoveOwner string
+	ConfirmUnshare    string // "%s" = bruger, "%q" = db
+	SetupShared       string
+	SetupSharedTitle  string // "%s" = remote-navn
+	AlreadyLocal      string
+	NewLocalPassword  string
+	BindExisting      string
+	BoundNowSync      string
+	MasterPwd         string
+	MasterPwdFor      string
+	Language          string
+	ResetEnroll       string
 }
 
 var dicts = map[lang]*dict{
@@ -132,6 +150,7 @@ var dicts = map[lang]*dict{
 		OK: "OK", Cancel: "Annullér", Close: "Luk", Save: "Gem",
 		Back: "Tilbage", Next: "Næste", Finish: "Færdig", Browse: "Vælg…",
 		Working: "Arbejder…", Done: "Færdig", Error: "Fejl",
+		Copy: "Kopiér", DBInfoTitle: "Database-info",
 
 		CLINotFound:     "Kan ikke finde programmet 'keepass-deltasync'.",
 		CLILocate:       "Find keepass-deltasync",
@@ -171,10 +190,11 @@ var dicts = map[lang]*dict{
 		ActivityHint: "Output fra CLI-kald (sync, tilføj/fjern, fejl …) vises her.",
 		Clear:        "Ryd",
 
-		ColEnrolled: "Tilmeldt",
-		ColLastSeen: "Sidst set",
-		ThisDevice:  "● denne enhed",
-		DevCount:    "%d enhed(er) på kontoen",
+		ColEnrolled:     "Tilmeldt",
+		ColLastSeen:     "Sidst set",
+		ThisDevice:      "● denne enhed",
+		DevCount:        "%d enhed(er) på kontoen",
+		DeviceInfoTitle: "Enheds-info",
 
 		AddDevice:           "Tilføj enhed",
 		AddDeviceCreate:     "Generér token",
@@ -185,25 +205,25 @@ var dicts = map[lang]*dict{
 		SelectDeviceFirst:   "Vælg først en enhed i listen.",
 		CannotRemoveCurrent: "Du kan ikke fjerne den enhed du bruger lige nu herfra.",
 		ConfirmRemoveDevice: "Fjern (tilbagekald) enheden %q? Dens token bliver ugyldig.",
-		StatusBox:    "Status",
-		NotEnrolled:  "Ikke tilmeldt endnu.",
-		Refresh:      "Opdatér",
-		Sync:         "Synkronisér",
-		SyncSelected: "Synkronisér valgte",
-		SyncAll:      "Synkronisér alle",
-		SelectFirst:  "Vælg først en database i listen.",
-		AddDatabase:    "Tilføj database",
-		ForgetDatabase: "Glem database",
-		ConfirmForget:  "Glem den lokale binding for %q? Selve .kdbx-filen og databasen på serveren røres IKKE — kun koblingen i denne klient fjernes.",
-		NoDatabases:    "Ingen databaser endnu. Klik 'Tilføj database' for at komme i gang.",
-		DBCount:        "%d database(r) tilkoblet",
-		ColName:      "Navn",
-		ColStatus:    "Status",
-		ColID:        "ID",
-		ColCreated:   "Oprettet",
-		ColPath:      "Lokal sti",
-		BoundLocally: "● klar",
-		OnServerOnly: "○ kun på server",
+		StatusBox:           "Status",
+		NotEnrolled:         "Ikke tilmeldt endnu.",
+		Refresh:             "Opdatér",
+		Sync:                "Synkronisér",
+		SyncSelected:        "Synkronisér valgte",
+		SyncAll:             "Synkronisér alle",
+		SelectFirst:         "Vælg først en database i listen.",
+		AddDatabase:         "Tilføj database",
+		ForgetDatabase:      "Glem database",
+		ConfirmForget:       "Glem den lokale binding for %q? Selve .kdbx-filen og databasen på serveren røres IKKE — kun koblingen i denne klient fjernes.",
+		NoDatabases:         "Ingen databaser endnu. Klik 'Tilføj database' for at komme i gang.",
+		DBCount:             "%d database(r) tilkoblet",
+		ColName:             "Navn",
+		ColStatus:           "Status",
+		ColID:               "ID",
+		ColCreated:          "Oprettet",
+		ColPath:             "Lokal sti",
+		BoundLocally:        "● klar",
+		OnServerOnly:        "○ kun på server",
 
 		MembersTitle:       "Koblet til databasen",
 		MembersOf:          "Koblet til %q",
@@ -211,14 +231,29 @@ var dicts = map[lang]*dict{
 		MemberCount:        "%d medlem(mer)",
 		MembersNeedBound:   "Databasen skal være sat op lokalt for at vise medlemmer.",
 		MembersUnavailable: "Kan ikke hente medlemmer (kun ejeren kan se dette):",
+		NoMembers:          "Kun dig — ikke delt med andre endnu.",
 		ColRole:            "Rolle",
 		ColUser:            "Brugernavn",
 		ColDisplay:         "Visningsnavn",
 		ColAdded:           "Tilføjet",
-		MasterPwd:    "Masterpassword",
-		MasterPwdFor: "Masterpassword for",
-		Language:     "Sprog",
-		ResetEnroll:  "Nulstil tilmelding",
+
+		ShareDatabase:     "Del database",
+		ShareTitle:        "Del %q med en bruger",
+		ShareWith:         "Del med (brugernavn)",
+		RemoveMember:      "Fjern medlem",
+		SelectMemberFirst: "Vælg først et medlem i listen.",
+		CannotRemoveOwner: "Ejeren kan ikke fjernes.",
+		ConfirmUnshare:    "Fjern %s fra %q?",
+		SetupShared:       "Sæt op lokalt",
+		SetupSharedTitle:  "Sæt den delte database %q op lokalt",
+		AlreadyLocal:      "Databasen er allerede sat op lokalt.",
+		NewLocalPassword:  "Nyt lokalt password",
+		BindExisting:      "Forbind eksisterende .kdbx (egen database, ny enhed)",
+		BoundNowSync:      "Forbundet! Klik på ⟳ (Synkronisér) for at hente entries.",
+		MasterPwd:         "Masterpassword",
+		MasterPwdFor:      "Masterpassword for",
+		Language:          "Sprog",
+		ResetEnroll:       "Nulstil tilmelding",
 	},
 	langEN: {
 		AppTitle: "KeePass Delta-Sync",
@@ -226,6 +261,7 @@ var dicts = map[lang]*dict{
 		OK: "OK", Cancel: "Cancel", Close: "Close", Save: "Save",
 		Back: "Back", Next: "Next", Finish: "Finish", Browse: "Browse…",
 		Working: "Working…", Done: "Done", Error: "Error",
+		Copy: "Copy", DBInfoTitle: "Database info",
 
 		CLINotFound:     "Could not find the 'keepass-deltasync' program.",
 		CLILocate:       "Locate keepass-deltasync",
@@ -265,10 +301,11 @@ var dicts = map[lang]*dict{
 		ActivityHint: "Output from CLI calls (sync, add/remove, errors …) shows here.",
 		Clear:        "Clear",
 
-		ColEnrolled: "Enrolled",
-		ColLastSeen: "Last seen",
-		ThisDevice:  "● this device",
-		DevCount:    "%d device(s) on the account",
+		ColEnrolled:     "Enrolled",
+		ColLastSeen:     "Last seen",
+		ThisDevice:      "● this device",
+		DevCount:        "%d device(s) on the account",
+		DeviceInfoTitle: "Device info",
 
 		AddDevice:           "Add device",
 		AddDeviceCreate:     "Generate token",
@@ -279,25 +316,25 @@ var dicts = map[lang]*dict{
 		SelectDeviceFirst:   "Select a device in the list first.",
 		CannotRemoveCurrent: "You can't remove the device you're currently using from here.",
 		ConfirmRemoveDevice: "Remove (revoke) device %q? Its token will become invalid.",
-		StatusBox:    "Status",
-		NotEnrolled:  "Not enrolled yet.",
-		Refresh:      "Refresh",
-		Sync:         "Sync",
-		SyncSelected: "Sync selected",
-		SyncAll:      "Sync all",
-		SelectFirst:  "Select a database in the list first.",
-		AddDatabase:    "Add database",
-		ForgetDatabase: "Forget database",
-		ConfirmForget:  "Forget the local binding for %q? The .kdbx file and the database on the server are NOT touched — only the binding in this client is removed.",
-		NoDatabases:    "No databases yet. Click 'Add database' to get started.",
-		DBCount:        "%d database(s) connected",
-		ColName:      "Name",
-		ColStatus:    "Status",
-		ColID:        "ID",
-		ColCreated:   "Created",
-		ColPath:      "Local path",
-		BoundLocally: "● ready",
-		OnServerOnly: "○ server only",
+		StatusBox:           "Status",
+		NotEnrolled:         "Not enrolled yet.",
+		Refresh:             "Refresh",
+		Sync:                "Sync",
+		SyncSelected:        "Sync selected",
+		SyncAll:             "Sync all",
+		SelectFirst:         "Select a database in the list first.",
+		AddDatabase:         "Add database",
+		ForgetDatabase:      "Forget database",
+		ConfirmForget:       "Forget the local binding for %q? The .kdbx file and the database on the server are NOT touched — only the binding in this client is removed.",
+		NoDatabases:         "No databases yet. Click 'Add database' to get started.",
+		DBCount:             "%d database(s) connected",
+		ColName:             "Name",
+		ColStatus:           "Status",
+		ColID:               "ID",
+		ColCreated:          "Created",
+		ColPath:             "Local path",
+		BoundLocally:        "● ready",
+		OnServerOnly:        "○ server only",
 
 		MembersTitle:       "Connected to the database",
 		MembersOf:          "Connected to %q",
@@ -305,13 +342,28 @@ var dicts = map[lang]*dict{
 		MemberCount:        "%d member(s)",
 		MembersNeedBound:   "The database must be set up locally to show members.",
 		MembersUnavailable: "Cannot fetch members (only the owner can see this):",
+		NoMembers:          "Just you — not shared with anyone yet.",
 		ColRole:            "Role",
 		ColUser:            "Username",
 		ColDisplay:         "Display name",
 		ColAdded:           "Added",
-		MasterPwd:    "Master password",
-		MasterPwdFor: "Master password for",
-		Language:     "Language",
-		ResetEnroll:  "Reset enrollment",
+
+		ShareDatabase:     "Share database",
+		ShareTitle:        "Share %q with a user",
+		ShareWith:         "Share with (username)",
+		RemoveMember:      "Remove member",
+		SelectMemberFirst: "Select a member in the list first.",
+		CannotRemoveOwner: "The owner can't be removed.",
+		ConfirmUnshare:    "Remove %s from %q?",
+		SetupShared:       "Set up locally",
+		SetupSharedTitle:  "Set up the shared database %q locally",
+		AlreadyLocal:      "The database is already set up locally.",
+		NewLocalPassword:  "New local password",
+		BindExisting:      "Connect existing .kdbx (your own database, new device)",
+		BoundNowSync:      "Connected! Click ⟳ (Sync) to fetch entries.",
+		MasterPwd:         "Master password",
+		MasterPwdFor:      "Master password for",
+		Language:          "Language",
+		ResetEnroll:       "Reset enrollment",
 	},
 }

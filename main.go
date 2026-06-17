@@ -25,27 +25,20 @@ type ui struct {
 	win      fyne.Window
 	c        *cli
 	set      settings
-	activity *widget.Entry // aktivitets-/log-panel (read-only)
+	activity *readOnlyEntry // aktivitets-/log-panel (read-only, fuld kontrast)
 	statusLb *widget.Label // status-tekst på dashboardet
 
-	// Database-gridden (samme kolonner som `databases`-kommandoen i terminalen).
-	// Bygget på widget.List for ægte hel-række-markering.
-	dbGrid *widget.List
-	dbList []database     // de viste rækker — læses af grid-callbacks
-	dbInfo *widget.Label  // linje over gridden: antal / fejl / tom
-	selDB  int            // valgt rækkeindeks (-1 = ingen)
+	// Database-fanen: en hierarkisk liste hvor hver database står på sin egen
+	// linje med inline-handlinger, og dens medlemmer vises lige under den.
+	dbBox  *fyne.Container // beholder for database-kortene (genopbygges ved refresh)
+	dbInfo *widget.Label   // linje over listen: antal / fejl / tom
+	dbHint *widget.Label   // hover-hint-linje nederst (hvad ikon-knapper gør)
 
-	// Detalje-panel: medlemmer/enheder koblet til den valgte database (`shares`).
-	memTitle *widget.Label
-	memInfo  *widget.Label
-	memGrid  *widget.List
-	memList  []member
-
-	// Enheder-fanen: kontoens tilmeldte enheder (`devices`, kontobredt).
-	devGrid *widget.List
-	devList []device
+	// Enheder-fanen: kontoens tilmeldte enheder (`devices`, kontobredt) som en
+	// liste med inline-ikoner pr. enhed.
+	devBox  *fyne.Container
 	devInfo *widget.Label
-	selDev  int // valgt enheds-rækkeindeks (-1 = ingen)
+	devHint *widget.Label // hover-hint-linje nederst
 
 	currentUser string // brugernavn fra status — default i "tilføj enhed"
 }

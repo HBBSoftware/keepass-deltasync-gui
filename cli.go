@@ -348,6 +348,35 @@ func (c *cli) sync(ctx context.Context, name, masterPassword string) result {
 	return c.run(ctx, masterPassword+"\n", "sync", "--password-stdin", name)
 }
 
+// share spejler `keepass-deltasync share --password-stdin <db> <username>`.
+// Masterpasswordet sendes via stdin — serveren bruger det IKKE, men klienten
+// skal bruge det lokalt til at wrappe database-nøglen til modtagerens enhed.
+// Flaget SKAL stå før de positionelle argumenter (flag-pakke-reglen).
+func (c *cli) share(ctx context.Context, db, username, masterPassword string) result {
+	return c.run(ctx, masterPassword+"\n", "share", "--password-stdin", db, username)
+}
+
+// unshare spejler `keepass-deltasync unshare <db> <username>` — fjerner et medlem
+// (eller lader medlemmet selv forlade). Intet password.
+func (c *cli) unshare(ctx context.Context, db, username string) result {
+	return c.run(ctx, "", "unshare", db, username)
+}
+
+// initBind spejler `keepass-deltasync init --bind <uuid> <name> <path>` — binder
+// en EKSISTERENDE lokal .kdbx til en database der allerede findes på serveren
+// (det normale "2. enhed, egen database"-flow). Flaget SKAL stå før de
+// positionelle argumenter (flag-pakke-reglen).
+func (c *cli) initBind(ctx context.Context, name, localPath, uuid string) result {
+	return c.run(ctx, "", "init", "--bind", uuid, name, localPath)
+}
+
+// initShared spejler `keepass-deltasync init-shared --password-stdin <remote> <path>`.
+// newPassword er et NYT lokalt password til den lokale .kdbx-kopi (uafhængigt af
+// ejerens password).
+func (c *cli) initShared(ctx context.Context, remoteName, localPath, newPassword string) result {
+	return c.run(ctx, newPassword+"\n", "init-shared", "--password-stdin", remoteName, localPath)
+}
+
 // withTimeout giver en context med en fornuftig grænse til en CLI-kørsel.
 // Sync kan tage tid (merge via keepassxc-cli), så den får rigeligt.
 func withTimeout(d time.Duration) (context.Context, context.CancelFunc) {

@@ -4,11 +4,13 @@ package main
 
 import (
 	"errors"
+	"image/color"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
@@ -24,12 +26,11 @@ func (u *ui) async(work func() any, done func(any)) {
 	}()
 }
 
-// newActivityLog laver det read-only tekstfelt der viser CLI-output.
-func newActivityLog() *widget.Entry {
-	e := widget.NewMultiLineEntry()
-	e.Wrapping = fyne.TextWrapWord
-	e.Disable() // read-only, men stadig scrollbar/markérbar
-	return e
+// newActivityLog laver det read-only tekstfelt der viser CLI-output. Det bruger
+// readOnlyEntry (ikke Disable()), så teksten vises i fuld kontrast og er nem at
+// læse, men stadig ikke kan redigeres.
+func newActivityLog() *readOnlyEntry {
+	return newReadOnlyEntry()
 }
 
 // log tilføjer en linje (med tidsstempel) til aktivitetsloggen.
@@ -58,6 +59,35 @@ func centeredSpinner(label string) fyne.CanvasObject {
 
 // errSimple pakker en streng som en error til dialog.ShowError.
 func errSimple(msg string) error { return errors.New(msg) }
+
+// prettyTime parser et tidsstempel (ISO 8601 fra serveren, evt. med Z/offset) og
+// formaterer det pænt i lokal tid. Kan ikke det parses, returneres originalen.
+func prettyTime(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	layouts := []string{
+		time.RFC3339,                       // 2026-06-16T12:36:16Z
+		"2006-01-02T15:04:05.999999Z07:00", // med brøkdele
+		"2006-01-02 15:04:05.999999-07",    // shares/AddedAt-format
+		"2006-01-02 15:04:05",
+	}
+	for _, l := range layouts {
+		if t, err := time.Parse(l, s); err == nil {
+			return t.Local().Format("2006-01-02 15:04")
+		}
+	}
+	return s
+}
+
+// indented rykker et element ind med en fast venstre-margin, så medlemslinjer
+// under en database fremstår visuelt underordnet den.
+func indented(o fyne.CanvasObject) fyne.CanvasObject {
+	pad := canvas.NewRectangle(color.Transparent)
+	pad.SetMinSize(fyne.NewSize(28, 0))
+	return container.NewBorder(nil, nil, pad, nil, o)
+}
 
 // uriToPath konverterer en Fyne-URI fra en fildialog til en OS-sti. På Windows
 // kan Fyne give "/C:/sti" — den ledende skråstreg fjernes så Go's exec/os kan

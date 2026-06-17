@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -17,8 +18,6 @@ import (
 // databaser, aktivitetslog og indstillinger.
 func (u *ui) showDashboard() {
 	debugf("showDashboard: begin")
-	u.selDB = -1
-	u.selDev = -1
 	u.statusLb = widget.NewLabel("")
 	u.statusLb.Wrapping = fyne.TextWrapWord
 
@@ -46,205 +45,258 @@ func (u *ui) showDashboard() {
 	debugf("showDashboard: refresh kicked off")
 }
 
-// dbColumns er kolonnerne i gridden — bevidst de SAMME som `databases`-kommandoen
-// i terminalen, så man genkender visningen. width er pixelbredden.
-var dbColumns = []gridColumn{
-	{func() string { return L.ColStatus }, 120},
-	{func() string { return L.ColName }, 140},
-	{func() string { return L.ColID }, 290},
-	{func() string { return L.ColCreated }, 215},
-	{func() string { return L.ColPath }, 340},
-}
-
-// cellText giver teksten for en celle i gridden.
-func (u *ui) cellText(row, col int) string {
-	if row < 0 || row >= len(u.dbList) {
-		return ""
-	}
-	db := u.dbList[row]
-	switch col {
-	case 0:
-		if db.Bound {
-			return L.BoundLocally
-		}
-		return L.OnServerOnly
-	case 1:
-		return db.Name
-	case 2:
-		return db.ID
-	case 3:
-		return db.Created
-	case 4:
-		return db.LocalPath
-	}
-	return ""
-}
-
-// databasesTab bygger fanen: en grid med de tilkoblede databaser (samme kolonner
-// som terminalen) plus handlingsknapper. Man vælger en række i gridden og
-// synkroniserer den valgte — eller synkroniserer alle bundne på én gang.
+// databasesTab bygger fanen som en hierarkisk liste: hver database står på sin
+// egen linje med sine handlinger (synk/del/glem) inline, og lige under den vises
+// de brugere der er koblet til den, hver med en "fjern medlem"-knap. Mere
+// integreret end at vælge en række og bruge en separat knapbjælke.
 func (u *ui) databasesTab() fyne.CanvasObject {
 	u.dbInfo = widget.NewLabel("")
+	u.dbHint = widget.NewLabel(" ")
+	u.dbBox = container.NewVBox()
 
-	var gridBody fyne.CanvasObject
-	u.dbGrid, gridBody = newGridList(
-		dbColumns,
-		func() int { return len(u.dbList) },
-		u.cellText,
-		func(row int) { u.selDB = row; u.loadMembers() },
-		func() { u.selDB = -1; u.clearMembers() },
-	)
-
-	refresh := widget.NewButton(L.Refresh, func() { u.refreshDatabases() })
-	add := widget.NewButton(L.AddDatabase, func() { u.showAddDBDialog() })
+	add := widget.NewButtonWithIcon(L.AddDatabase, theme.ContentAddIcon(), func() { u.showAddDBDialog() })
 	add.Importance = widget.HighImportance
-	forget := widget.NewButton(L.ForgetDatabase, func() { u.forgetSelected() })
-	syncSel := widget.NewButton(L.SyncSelected, func() { u.syncSelected() })
-	syncAll := widget.NewButton(L.SyncAll, func() { u.syncAll() })
-
-	toolbar := container.NewHBox(add, forget, syncSel, syncAll, layout.NewSpacer(), refresh)
+	syncAll := widget.NewButtonWithIcon(L.SyncAll, theme.ViewRefreshIcon(), func() { u.syncAll() })
+	refresh := widget.NewButton(L.Refresh, func() { u.refreshDatabases() })
+	toolbar := container.NewHBox(add, syncAll, layout.NewSpacer(), refresh)
 	top := container.NewVBox(toolbar, u.dbInfo)
 
-	// Øvre del: database-gridden. Nedre del: detalje-panel for den valgte
-	// database (medlemmer/enheder koblet til den).
-	gridPane := container.NewBorder(top, nil, nil, nil, gridBody)
-	split := container.NewVSplit(gridPane, u.membersPane())
-	split.SetOffset(0.6)
-	return split
+	return container.NewBorder(top, u.dbHint, nil, nil, container.NewVScroll(u.dbBox))
 }
 
-// memberColumns er kolonnerne i medlems-gridden — samme som `shares`-kommandoen.
-var memberColumns = []gridColumn{
-	{func() string { return L.ColRole }, 110},
-	{func() string { return L.ColUser }, 150},
-	{func() string { return L.ColDisplay }, 220},
-	{func() string { return L.ColAdded }, 215},
-}
-
-func (u *ui) memberCellText(row, col int) string {
-	if row < 0 || row >= len(u.memList) {
-		return ""
+// setHint opdaterer hover-hint-linjen nederst på databasefanen.
+func (u *ui) setHint(s string) {
+	if u.dbHint == nil {
+		return
 	}
-	m := u.memList[row]
-	switch col {
-	case 0:
-		return m.Role
-	case 1:
-		return m.Username
-	case 2:
-		return m.DisplayName
-	case 3:
-		return m.AddedAt
+	if s == "" {
+		u.dbHint.SetText(" ")
+		return
 	}
-	return ""
+	u.dbHint.SetText("➤  " + s)
 }
 
-// membersPane bygger detalje-panelet under gridden.
-func (u *ui) membersPane() fyne.CanvasObject {
-	u.memTitle = widget.NewLabelWithStyle(L.MembersTitle, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	u.memInfo = widget.NewLabel(L.SelectToSeeMembers)
-
-	var gridBody fyne.CanvasObject
-	u.memGrid, gridBody = newGridList(
-		memberColumns,
-		func() int { return len(u.memList) },
-		u.memberCellText,
-		nil, // ingen handling på valg — kun visning, men hele rækken markeres
-		nil,
+// dbCard bygger ét database-"kort": en header-linje med navn, status, sti og
+// inline-handlinger, og derunder de brugere (medlemmer) der er koblet til den —
+// hver med en fjern-knap. memErr != "" vises i stedet for medlemmer (fx hvis man
+// ikke er ejer og derfor ikke må se medlemslisten).
+func (u *ui) dbCard(db database, members []member, memErr string) fyne.CanvasObject {
+	// Statusmarkør + navn + oprettet til venstre, sti i midten (afkortes), og
+	// ikon-knapper til højre — på én linje.
+	status := "○"
+	if db.Bound {
+		status = "●"
+	}
+	left := container.NewHBox(
+		widget.NewLabel(status),
+		widget.NewLabelWithStyle(db.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabel(db.Created),
 	)
+	path := widget.NewLabel(db.LocalPath)
+	path.Truncation = fyne.TextTruncateEllipsis
 
-	head := container.NewVBox(u.memTitle, u.memInfo)
-	return container.NewBorder(head, nil, nil, nil, gridBody)
+	info := newHintIconButton(L.DBInfoTitle, theme.InfoIcon(), func() { u.showDBInfo(db) }, u.setHint)
+	var actions *fyne.Container
+	if db.Bound {
+		sync := newHintIconButton(L.Sync, theme.ViewRefreshIcon(), func() { u.promptSync(db.Name) }, u.setHint)
+		sync.Importance = widget.HighImportance
+		share := newHintIconButton(L.ShareDatabase, theme.MailForwardIcon(), func() { u.shareDatabase(db) }, u.setHint)
+		forget := newHintIconButton(L.ForgetDatabase, theme.CancelIcon(), func() { u.forgetDatabase(db) }, u.setHint)
+		actions = container.NewHBox(sync, share, forget, info)
+	} else {
+		// Server-only: enten forbinde din EGEN eksisterende database (ny enhed,
+		// init --bind) eller sætte en database op som er DELT med dig (init-shared).
+		bind := newHintIconButton(L.BindExisting, theme.FolderOpenIcon(), func() { u.bindDatabase(db) }, u.setHint)
+		bind.Importance = widget.HighImportance
+		setup := newHintIconButton(L.SetupShared, theme.DownloadIcon(), func() { u.setupSharedDB(db) }, u.setHint)
+		actions = container.NewHBox(bind, setup, info)
+	}
+
+	header := container.NewBorder(nil, nil, left, actions, path)
+
+	rows := []fyne.CanvasObject{header}
+	switch {
+	case !db.Bound:
+		// server-only: intet medlems-opslag muligt (kræver lokal binding)
+	case memErr != "":
+		rows = append(rows, indented(widget.NewLabel(L.MembersUnavailable+" "+memErr)))
+	case len(members) == 0:
+		rows = append(rows, indented(widget.NewLabel(L.NoMembers)))
+	default:
+		for _, m := range members {
+			rows = append(rows, u.memberRow(db, m))
+		}
+	}
+	rows = append(rows, widget.NewSeparator())
+	return container.NewVBox(rows...)
 }
 
-// clearMembers tømmer detalje-panelet (ingen database valgt).
-func (u *ui) clearMembers() {
-	u.memList = nil
-	if u.memTitle != nil {
-		u.memTitle.SetText(L.MembersTitle)
-		u.memInfo.SetText(L.SelectToSeeMembers)
-		u.memGrid.UnselectAll()
-		u.memGrid.Refresh()
-	}
+// showDBInfo viser detaljer om databasen — navn, server-UUID, oprettet og sti —
+// med mulighed for at kopiere UUID'en til udklipsholderen.
+func (u *ui) showDBInfo(db database) {
+	idEntry := widget.NewEntry()
+	idEntry.SetText(db.ID)
+	copyBtn := widget.NewButtonWithIcon(L.Copy, theme.ContentCopyIcon(), func() {
+		u.fApp.Clipboard().SetContent(db.ID)
+	})
+	idRow := container.NewBorder(nil, nil, nil, copyBtn, idEntry)
+
+	form := widget.NewForm(
+		widget.NewFormItem(L.ColName, widget.NewLabel(db.Name)),
+		widget.NewFormItem(L.ColID, idRow),
+		widget.NewFormItem(L.ColCreated, widget.NewLabel(db.Created)),
+		widget.NewFormItem(L.ColPath, widget.NewLabel(db.LocalPath)),
+	)
+	d := dialog.NewCustom(L.DBInfoTitle, L.Close, container.NewPadded(form), u.win)
+	d.Resize(fyne.NewSize(600, 260))
+	d.Show()
 }
 
-// loadMembers henter medlemmerne for den valgte database og fylder panelet.
-func (u *ui) loadMembers() {
-	if u.selDB < 0 || u.selDB >= len(u.dbList) || u.memGrid == nil {
-		return
+// memberRow bygger én indrykket medlemslinje med en fjern-knap (ikke for ejeren).
+func (u *ui) memberRow(db database, m member) fyne.CanvasObject {
+	text := m.Role + "   " + m.Username
+	if m.DisplayName != "" {
+		text += "   (" + m.DisplayName + ")"
 	}
-	db := u.dbList[u.selDB]
-	u.memTitle.SetText(fmt.Sprintf(L.MembersOf, db.Name))
-	u.memInfo.SetText(L.Working)
-	u.memList = nil
-	u.memGrid.UnselectAll()
-	u.memGrid.Refresh()
+	lbl := widget.NewLabel(text)
 
-	if !db.Bound {
-		// `shares` slår op via lokal config — virker kun for bundne databaser.
-		u.memInfo.SetText(L.MembersNeedBound)
-		return
+	var right fyne.CanvasObject
+	if m.Role != "owner" {
+		right = widget.NewButton(L.RemoveMember, func() { u.unshareMember(db, m) })
 	}
+	return indented(container.NewBorder(nil, nil, nil, right, lbl))
+}
 
-	name := db.Name
-	u.async(func() any {
-		ctx, cancel := withTimeout(30 * time.Second)
-		defer cancel()
-		ms, r := u.c.shares(ctx, name)
-		return memResult{ms: ms, r: r}
-	}, func(v any) {
-		res := v.(memResult)
-		// Brugeren kan have valgt en anden række imens — ignorér forældet svar.
-		if u.selDB < 0 || u.selDB >= len(u.dbList) || u.dbList[u.selDB].Name != name {
+// shareDatabase deler databasen med en anden bruger via
+// `share --password-stdin <db> <username>`. Masterpasswordet bruges lokalt til
+// at wrappe database-nøglen til modtagerens enhed (serveren ser det aldrig).
+func (u *ui) shareDatabase(db database) {
+	username := widget.NewEntry()
+	username.SetPlaceHolder(L.Username)
+	pw := widget.NewPasswordEntry()
+	items := []*widget.FormItem{
+		widget.NewFormItem(L.ShareWith, username),
+		widget.NewFormItem(L.MasterPwd, pw),
+	}
+	u.showFormDialog(fmt.Sprintf(L.ShareTitle, db.Name), L.ShareDatabase, items, func(ok bool) {
+		if !ok || username.Text == "" || pw.Text == "" {
 			return
 		}
-		if res.r.Err != nil {
-			u.memList = nil
-			u.memInfo.SetText(L.MembersUnavailable + " " + describeErr(res.r))
-			u.memGrid.Refresh()
-			return
-		}
-		u.memList = res.ms
-		u.memInfo.SetText(fmt.Sprintf(L.MemberCount, len(res.ms)))
-		u.memGrid.Refresh()
+		name := db.Name
+		u.async(func() any {
+			ctx, cancel := withTimeout(60 * time.Second)
+			defer cancel()
+			return u.c.share(ctx, name, username.Text, pw.Text)
+		}, func(v any) {
+			r := v.(result)
+			u.log(r.Combined())
+			if r.Err != nil {
+				dialog.ShowError(errSimple(describeErr(r)), u.win)
+				return
+			}
+			u.refreshDatabases()
+		})
 	})
 }
 
-// memResult bærer medlemslisten tilbage fra goroutinen.
-type memResult struct {
-	ms []member
-	r  result
+// unshareMember fjerner et medlem fra databasen via `unshare <db> <username>`.
+func (u *ui) unshareMember(db database, m member) {
+	msg := fmt.Sprintf(L.ConfirmUnshare, m.Username, db.Name)
+	dialog.ShowConfirm(L.RemoveMember, msg, func(ok bool) {
+		if !ok {
+			return
+		}
+		dbName, user := db.Name, m.Username
+		u.async(func() any {
+			ctx, cancel := withTimeout(30 * time.Second)
+			defer cancel()
+			return u.c.unshare(ctx, dbName, user)
+		}, func(v any) {
+			r := v.(result)
+			u.log(r.Combined())
+			if r.Err != nil {
+				dialog.ShowError(errSimple(describeErr(r)), u.win)
+				return
+			}
+			u.refreshDatabases()
+		})
+	}, u.win)
 }
 
-// syncSelected synkroniserer den valgte database i gridden.
-func (u *ui) syncSelected() {
-	if u.selDB < 0 || u.selDB >= len(u.dbList) {
-		dialog.ShowInformation(L.Sync, L.SelectFirst, u.win)
-		return
-	}
-	db := u.dbList[u.selDB]
-	if !db.Bound {
-		// Kun lokalt bundne databaser kan synkroniseres direkte.
-		dialog.ShowInformation(L.Sync, L.OnServerOnly, u.win)
-		return
-	}
-	u.promptSync(db.Name)
+// bindDatabase forbinder en server-only database, du SELV ejer (typisk på en ny
+// enhed), til en eksisterende lokal .kdbx via `init --bind <uuid> <name> <path>`.
+// Filen skal allerede findes (init --bind opretter den ikke). Bagefter skal man
+// synkronisere for at hente entries.
+func (u *ui) bindDatabase(db database) {
+	dialog.ShowFileOpen(func(rc fyne.URIReadCloser, err error) {
+		if err != nil || rc == nil {
+			return
+		}
+		defer rc.Close()
+		path := uriToPath(rc.URI())
+		name, uuid := db.Name, db.ID
+		u.async(func() any {
+			ctx, cancel := withTimeout(60 * time.Second)
+			defer cancel()
+			return u.c.initBind(ctx, name, path, uuid)
+		}, func(v any) {
+			r := v.(result)
+			u.log(r.Combined())
+			if r.Err != nil {
+				dialog.ShowError(errSimple(describeErr(r)), u.win)
+				return
+			}
+			u.refreshDatabases()
+			dialog.ShowInformation(L.BindExisting, L.BoundNowSync, u.win)
+		})
+	}, u.win)
 }
 
-// forgetSelected fjerner den lokale binding for den valgte database via
-// `forget <name>`. Det rører hverken .kdbx-filen eller databasen på serveren —
-// kun koblingen i denne klients config.
-func (u *ui) forgetSelected() {
-	if u.selDB < 0 || u.selDB >= len(u.dbList) {
-		dialog.ShowInformation(L.ForgetDatabase, L.SelectFirst, u.win)
-		return
+// setupSharedDB sætter en database, der er delt med dig (vises som "kun på
+// server"), op lokalt via `init-shared --password-stdin <remote> <path>`. Du
+// vælger en lokal .kdbx-sti og et NYT lokalt password til din egen kopi.
+func (u *ui) setupSharedDB(db database) {
+	path := widget.NewEntry()
+	path.SetPlaceHolder(L.KdbxFileHint)
+	browse := widget.NewButton(L.Browse, func() {
+		dialog.ShowFileSave(func(wc fyne.URIWriteCloser, err error) {
+			if err != nil || wc == nil {
+				return
+			}
+			defer wc.Close()
+			path.SetText(uriToPath(wc.URI()))
+		}, u.win)
+	})
+	pathRow := container.NewBorder(nil, nil, nil, browse, path)
+	pw := widget.NewPasswordEntry()
+	items := []*widget.FormItem{
+		widget.NewFormItem(L.KdbxFile, pathRow),
+		widget.NewFormItem(L.NewLocalPassword, pw),
 	}
-	db := u.dbList[u.selDB]
-	if !db.Bound {
-		// En "kun på server"-database har ingen lokal binding at glemme.
-		dialog.ShowInformation(L.ForgetDatabase, L.OnServerOnly, u.win)
-		return
-	}
+	u.showFormDialog(fmt.Sprintf(L.SetupSharedTitle, db.Name), L.SetupShared, items, func(ok bool) {
+		if !ok || path.Text == "" || pw.Text == "" {
+			return
+		}
+		remote := db.Name
+		u.async(func() any {
+			ctx, cancel := withTimeout(2 * time.Minute)
+			defer cancel()
+			return u.c.initShared(ctx, remote, path.Text, pw.Text)
+		}, func(v any) {
+			r := v.(result)
+			u.log(r.Combined())
+			if r.Err != nil {
+				dialog.ShowError(errSimple(describeErr(r)), u.win)
+				return
+			}
+			u.refreshDatabases()
+		})
+	})
+}
+
+// forgetDatabase fjerner den lokale binding via `forget <name>`. Det rører
+// hverken .kdbx-filen eller databasen på serveren — kun koblingen i config.
+func (u *ui) forgetDatabase(db database) {
 	msg := fmt.Sprintf(L.ConfirmForget, db.Name)
 	dialog.ShowConfirm(L.ForgetDatabase, msg, func(ok bool) {
 		if !ok {
@@ -267,60 +319,56 @@ func (u *ui) forgetSelected() {
 	}, u.win)
 }
 
-// deviceColumns er kolonnerne i enheds-gridden — samme som `devices`-kommandoen.
-var deviceColumns = []gridColumn{
-	{func() string { return L.ColStatus }, 110},
-	{func() string { return L.ColName }, 160},
-	{func() string { return L.ColID }, 290},
-	{func() string { return L.ColEnrolled }, 215},
-	{func() string { return L.ColLastSeen }, 215},
-}
-
-func (u *ui) deviceCellText(row, col int) string {
-	if row < 0 || row >= len(u.devList) {
-		return ""
-	}
-	d := u.devList[row]
-	switch col {
-	case 0:
-		if d.Current {
-			return L.ThisDevice
-		}
-		return ""
-	case 1:
-		return d.Name
-	case 2:
-		return d.ID
-	case 3:
-		return d.Enrolled
-	case 4:
-		return d.LastSeen
-	}
-	return ""
-}
-
-// devicesTab viser kontoens tilmeldte enheder som en grid (kontobredt — enheder
-// hører til kontoen, ikke til en enkelt database).
+// devicesTab viser kontoens tilmeldte enheder som en liste (kontobredt — enheder
+// hører til kontoen, ikke til en enkelt database). Hver enhed har inline-ikoner
+// til fjern og info.
 func (u *ui) devicesTab() fyne.CanvasObject {
 	u.devInfo = widget.NewLabel("")
+	u.devHint = widget.NewLabel(" ")
+	u.devBox = container.NewVBox()
 
-	var gridBody fyne.CanvasObject
-	u.devGrid, gridBody = newGridList(
-		deviceColumns,
-		func() int { return len(u.devList) },
-		u.deviceCellText,
-		func(row int) { u.selDev = row },
-		func() { u.selDev = -1 },
-	)
-
-	add := widget.NewButton(L.AddDevice, func() { u.showAddDeviceDialog() })
+	add := widget.NewButtonWithIcon(L.AddDevice, theme.ContentAddIcon(), func() { u.showAddDeviceDialog() })
 	add.Importance = widget.HighImportance
-	remove := widget.NewButton(L.RemoveDevice, func() { u.removeSelectedDevice() })
 	refresh := widget.NewButton(L.Refresh, func() { u.refreshDevices() })
-
-	toolbar := container.NewHBox(add, remove, layout.NewSpacer(), refresh)
+	toolbar := container.NewHBox(add, layout.NewSpacer(), refresh)
 	top := container.NewVBox(toolbar, u.devInfo)
-	return container.NewBorder(top, nil, nil, nil, gridBody)
+
+	return container.NewBorder(top, u.devHint, nil, nil, container.NewVScroll(u.devBox))
+}
+
+// setDevHint opdaterer hover-hint-linjen nederst på enheds-fanen.
+func (u *ui) setDevHint(s string) {
+	if u.devHint == nil {
+		return
+	}
+	if s == "" {
+		u.devHint.SetText(" ")
+		return
+	}
+	u.devHint.SetText("➤  " + s)
+}
+
+// deviceRow bygger én enheds-linje: markør (● for den aktuelle enhed) + navn +
+// "sidst set" (pænt formateret), og ikon-knapper til fjern og info.
+func (u *ui) deviceRow(d device) fyne.CanvasObject {
+	marker := "   "
+	if d.Current {
+		marker = "●"
+	}
+	markerLbl := widget.NewLabel(marker)
+	nameLbl := widget.NewLabelWithStyle(d.Name, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	nameLbl.Truncation = fyne.TextTruncateEllipsis
+	seenLbl := widget.NewLabel(L.ColLastSeen + ": " + prettyTime(d.LastSeen))
+
+	// Faste kolonnebredder, så navn og dato flugter på tværs af rækkerne.
+	cols := container.New(&columnsLayout{widths: []float32{26, 230}}, markerLbl, nameLbl, seenLbl)
+
+	info := newHintIconButton(L.DeviceInfoTitle, theme.InfoIcon(), func() { u.showDeviceInfo(d) }, u.setDevHint)
+	remove := newHintIconButton(L.RemoveDevice, theme.CancelIcon(), func() { u.removeDevice(d) }, u.setDevHint)
+	actions := container.NewHBox(remove, info)
+
+	header := container.NewBorder(nil, nil, cols, actions, nil)
+	return container.NewVBox(header, widget.NewSeparator())
 }
 
 // showFormDialog viser en form-dialog der er markant bredere end Fynes default
@@ -382,15 +430,36 @@ func (u *ui) showEnrollTokenResult(output string) {
 	d.Show()
 }
 
-// removeSelectedDevice (B) tilbagekalder den valgte enhed via `devices remove`.
-func (u *ui) removeSelectedDevice() {
-	if u.selDev < 0 || u.selDev >= len(u.devList) {
-		dialog.ShowInformation(L.RemoveDevice, L.SelectDeviceFirst, u.win)
-		return
-	}
-	d := u.devList[u.selDev]
+// showDeviceInfo viser alle data om enheden — navn, ID, tilmeldt og sidst set —
+// med mulighed for at kopiere ID'et til udklipsholderen.
+func (u *ui) showDeviceInfo(d device) {
+	idEntry := widget.NewEntry()
+	idEntry.SetText(d.ID)
+	copyBtn := widget.NewButtonWithIcon(L.Copy, theme.ContentCopyIcon(), func() {
+		u.fApp.Clipboard().SetContent(d.ID)
+	})
+	idRow := container.NewBorder(nil, nil, nil, copyBtn, idEntry)
+
+	current := "—"
 	if d.Current {
-		// Forhindr at man låser sig selv ude fra den enhed GUI'en kører på.
+		current = L.ThisDevice
+	}
+	form := widget.NewForm(
+		widget.NewFormItem(L.ColName, widget.NewLabel(d.Name)),
+		widget.NewFormItem(L.ColID, idRow),
+		widget.NewFormItem(L.ColStatus, widget.NewLabel(current)),
+		widget.NewFormItem(L.ColEnrolled, widget.NewLabel(prettyTime(d.Enrolled))),
+		widget.NewFormItem(L.ColLastSeen, widget.NewLabel(prettyTime(d.LastSeen))),
+	)
+	dlg := dialog.NewCustom(L.DeviceInfoTitle, L.Close, container.NewPadded(form), u.win)
+	dlg.Resize(fyne.NewSize(600, 300))
+	dlg.Show()
+}
+
+// removeDevice tilbagekalder en enhed via `devices remove <id>`. Den aktuelle
+// enhed kan ikke fjernes herfra (det ville gøre den lokale token ugyldig).
+func (u *ui) removeDevice(d device) {
+	if d.Current {
 		dialog.ShowInformation(L.RemoveDevice, L.CannotRemoveCurrent, u.win)
 		return
 	}
@@ -416,9 +485,9 @@ func (u *ui) removeSelectedDevice() {
 	}, u.win)
 }
 
-// refreshDevices henter `devices` og opdaterer enheds-gridden.
+// refreshDevices henter `devices` og genopbygger enheds-listen.
 func (u *ui) refreshDevices() {
-	if u.devGrid == nil {
+	if u.devBox == nil {
 		return
 	}
 	u.devInfo.SetText(L.Working)
@@ -429,19 +498,20 @@ func (u *ui) refreshDevices() {
 		return devResult{ds: ds, r: r}
 	}, func(v any) {
 		res := v.(devResult)
-		u.selDev = -1
-		u.devGrid.UnselectAll()
+		u.devBox.RemoveAll()
 		if res.r.Err != nil {
-			u.devList = nil
 			u.log(res.r.Combined())
 			u.devInfo.SetText(L.Error + ": " + describeErr(res.r))
-			u.devGrid.Refresh()
+			u.devBox.Add(widget.NewLabel(L.Error + ": " + describeErr(res.r)))
+			u.devBox.Refresh()
 			return
 		}
-		u.devList = res.ds
 		u.devInfo.SetText(fmt.Sprintf(L.DevCount, len(res.ds)))
 		u.log(fmt.Sprintf(L.DevCount, len(res.ds)))
-		u.devGrid.Refresh()
+		for _, d := range res.ds {
+			u.devBox.Add(u.deviceRow(d))
+		}
+		u.devBox.Refresh()
 	})
 }
 
@@ -545,47 +615,78 @@ func (u *ui) refreshStatus() {
 	})
 }
 
-// refreshDatabases henter `databases` og opdaterer gridden.
+// refreshDatabases henter `databases` og — for hver lokalt bundet database —
+// dens medlemmer via `shares`, og genopbygger kort-listen. Medlems-opslagene
+// kører sekventielt i baggrunds-goroutinen, så UI'en ikke fryser.
 func (u *ui) refreshDatabases() {
-	if u.dbGrid == nil {
+	if u.dbBox == nil {
 		return
 	}
 	u.dbInfo.SetText(L.Working)
+	u.dbBox.RemoveAll()
+	u.dbBox.Add(widget.NewLabel(L.Working))
+	u.dbBox.Refresh()
 
 	u.async(func() any {
-		ctx, cancel := withTimeout(30 * time.Second)
+		ctx, cancel := withTimeout(2 * time.Minute)
 		defer cancel()
 		dbs, r := u.c.databases(ctx)
-		debugf("databases: n=%d err=%v stderr=%q", len(dbs), r.Err, r.Stderr)
-		return dbResult{dbs: dbs, r: r}
+		debugf("databases: n=%d err=%v", len(dbs), r.Err)
+		if r.Err != nil {
+			return dbResult{r: r}
+		}
+		rows := make([]dbWithMembers, 0, len(dbs))
+		for _, db := range dbs {
+			dm := dbWithMembers{db: db}
+			if db.Bound {
+				ms, mr := u.c.shares(ctx, db.Name)
+				if mr.Err != nil {
+					dm.memErr = describeErr(mr)
+				} else {
+					dm.members = ms
+				}
+			}
+			rows = append(rows, dm)
+		}
+		return dbResult{rows: rows, r: r}
 	}, func(v any) {
 		res := v.(dbResult)
-		debugf("databases done: n=%d", len(res.dbs))
-		u.selDB = -1
-		u.dbGrid.UnselectAll()
-		u.clearMembers()
+		debugf("databases done: n=%d", len(res.rows))
+		u.dbBox.RemoveAll()
 		if res.r.Err != nil {
-			u.dbList = nil
 			u.log(res.r.Combined())
 			u.dbInfo.SetText(L.Error + ": " + describeErr(res.r))
-			u.dbGrid.Refresh()
+			u.dbBox.Add(widget.NewLabel(L.Error + ": " + describeErr(res.r)))
+			u.dbBox.Refresh()
 			return
 		}
-		u.dbList = res.dbs
-		if len(res.dbs) == 0 {
+		if len(res.rows) == 0 {
 			u.dbInfo.SetText(L.NoDatabases)
-		} else {
-			u.dbInfo.SetText(fmt.Sprintf(L.DBCount, len(res.dbs)))
+			u.dbBox.Add(widget.NewLabel(L.NoDatabases))
+			u.dbBox.Refresh()
+			return
 		}
-		u.log(fmt.Sprintf(L.DBCount, len(res.dbs)))
-		u.dbGrid.Refresh()
+		u.dbInfo.SetText(fmt.Sprintf(L.DBCount, len(res.rows)))
+		u.log(fmt.Sprintf(L.DBCount, len(res.rows)))
+		for _, dm := range res.rows {
+			u.dbBox.Add(u.dbCard(dm.db, dm.members, dm.memErr))
+		}
+		u.dbBox.Refresh()
 	})
 }
 
-// dbResult bærer både listen og det rå resultat tilbage fra goroutinen.
+// dbWithMembers samler en database med dens medlemmer (eller en fejltekst hvis
+// medlems-opslaget fejlede, fx fordi man ikke er ejer).
+type dbWithMembers struct {
+	db      database
+	members []member
+	memErr  string
+}
+
+// dbResult bærer de samlede rækker tilbage fra goroutinen.
 type dbResult struct {
-	dbs []database
-	r   result
+	rows []dbWithMembers
+	r    result
 }
 
 // promptSync beder om masterpassword og kører derefter sync for databasen.
@@ -634,9 +735,9 @@ func (u *ui) syncAll() {
 			ctx, cancel := withTimeout(30 * time.Second)
 			defer cancel()
 			dbs, _ := u.c.databases(ctx)
-			return dbResult{dbs: dbs}
+			return dbs
 		}, func(v any) {
-			for _, db := range v.(dbResult).dbs {
+			for _, db := range v.([]database) {
 				if db.Bound {
 					u.runSync(db.Name, pw.Text)
 				}
