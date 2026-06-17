@@ -82,8 +82,14 @@ build:
     - fyne package -os linux
     - mv ./*.tar.xz "dist/keepass-deltasync-gui-${VERSION}-linux-amd64.tar.xz"
     # --- Windows (cross-compiled via mingw-w64) → .exe with embedded icon ---
+    # Debian's mingw-w64 enables stack-protector + _FORTIFY_SOURCE by default,
+    # but Go's cgo link step doesn't pull in libssp, so glfw's C objects fail to
+    # link with "undefined reference to __stack_chk_fail / __chk_fail". Disable
+    # both hardening features for the C code so those symbols are never emitted.
     - echo "==> Packaging Windows"
-    - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc fyne package -os windows
+    - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc
+        CGO_CFLAGS="-fno-stack-protector -D_FORTIFY_SOURCE=0"
+        fyne package -os windows
     - mv ./*.exe "dist/keepass-deltasync-gui-${VERSION}-windows-amd64.exe"
     # --- Checksums ---
     - cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
