@@ -85,10 +85,12 @@ build:
     # Debian's mingw-w64 enables stack-protector + _FORTIFY_SOURCE by default,
     # but Go's cgo link step doesn't pull in libssp, so glfw's C objects fail to
     # link with "undefined reference to __stack_chk_fail / __chk_fail". Disable
-    # both hardening features for the C code so those symbols are never emitted.
+    # both for the C code so those symbols are never emitted. NB: use
+    # -U_FORTIFY_SOURCE (undefine), NOT -D_FORTIFY_SOURCE=0 — the latter *re*defines
+    # the spec's value and runtime/cgo (built with -Werror) rejects the warning.
     - echo "==> Packaging Windows"
     - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc
-        CGO_CFLAGS="-fno-stack-protector -D_FORTIFY_SOURCE=0"
+        CGO_CFLAGS="-fno-stack-protector -U_FORTIFY_SOURCE"
         fyne package -os windows
     - mv ./*.exe "dist/keepass-deltasync-gui-${VERSION}-windows-amd64.exe"
     # --- Checksums ---
