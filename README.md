@@ -1,93 +1,169 @@
-# Keepass-DeltaSync-gui
+# KeePass Delta-Sync — GUI
 
+En lille **grafisk skal** oven på `keepass-deltasync`-kommandolinjeprogrammet.
+Den hjælper en ny bruger i gang via en **guide** (tilmeld enhed → tilføj
+database) og giver derefter et simpelt **dashboard** til at synkronisere
+KeePass-databaser.
 
-
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+Programmet kører på **Windows, Linux og macOS** og er skrevet i Go med
+[Fyne](https://fyne.io). Det er bevidst et **selvstændigt projekt** — det rører
+hverken krypto, server eller config selv, men kalder CLI'en som en subproces,
+præcis som projektets eksisterende terminal-menu (`keepass-deltasync tui`).
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/Star95/keepass-deltasync-gui.git
-git branch -M main
-git push -uf origin main
+┌─────────────────────┐        os/exec        ┌──────────────────────────┐
+│  keepass-deltasync   │ ───────────────────▶ │   keepass-deltasync(.exe) │
+│        -gui          │   enroll / init /     │   (CLI — al krypto,       │
+│  (dette projekt)     │   sync / databases …  │    server, config)        │
+└─────────────────────┘                       └──────────────────────────┘
 ```
 
-## Integrate with your tools
+Fordelen ved denne opdeling: kryptokoden findes kun ét sted, GUI'en og CLI'en
+kan udvikles og udgives uafhængigt, og licenserne blandes ikke sammen.
 
-* [Set up project integrations](https://gitlab.com/Star95/keepass-deltasync-gui/-/settings/integrations)
+---
 
-## Collaborate with your team
+## 1. Forudsætninger
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+| Hvad | Hvorfor | Note |
+|------|---------|------|
+| **Go 1.23+** | Bygge GUI'en | `go version` |
+| **En C-compiler** | Fyne kræver CGO | Se nedenfor per OS |
+| **`keepass-deltasync`-CLI'en** | GUI'en kalder den | Byg fra `../Keepass-deltasync/client`, eller hent en release-binær |
+| **`keepassxc-cli`** | Bruges af CLI'en til selve sync-merge | Følger med [KeePassXC](https://keepassxc.org) |
 
-## Test and Deploy
+### C-compiler per OS
 
-Use the built-in continuous integration in GitLab.
+- **Windows:** en mingw-w64 gcc. Letteste vej:
+  ```powershell
+  winget install BrechtSanders.WinLibs.POSIX.UCRT
+  ```
+  (eller [w64devkit](https://github.com/skeeto/w64devkit) / MSYS2). Sørg for at
+  `gcc` er i PATH, eller sæt `CC` til den fulde sti.
+- **Linux:** `sudo apt install gcc pkg-config libgl1-mesa-dev xorg-dev`
+  (Debian/Ubuntu) — tilsvarende `gl`- og `X11`-dev-pakker på andre distroer.
+- **macOS:** `xcode-select --install` (Xcode Command Line Tools).
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+---
 
-***
+## 2. Byg
 
-# Editing this README
+```sh
+# I denne mappe (keepass-deltasync-gui)
+go mod tidy
+go build -o keepass-deltasync-gui .       # .exe på Windows
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+Eller med den medfølgende Makefile:
 
-## Suggestions for a good README
+```sh
+make build      # bygger til det aktuelle OS
+make run        # bygger og kører
+```
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+> **Windows-tip:** hvis `gcc` ikke er i PATH, så sæt den for byggekommandoen:
+> ```powershell
+> $env:CGO_ENABLED=1
+> $env:CC="C:\sti\til\mingw64\bin\gcc.exe"
+> go build -o keepass-deltasync-gui.exe .
+> ```
 
-## Name
-Choose a self-explaining name for your project.
+### Pæne installerbare pakker (til release)
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Brug Fyne's eget værktøj — det laver ikon, metadata og en rigtig `.app`/`.exe`.
+Ikon, navn, id og version læses fra `FyneApp.toml`:
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+```sh
+go install fyne.io/tools/cmd/fyne@latest
+fyne package -os windows    # på Windows
+fyne package -os darwin     # på macOS    → KeePass Delta-Sync.app
+fyne package -os linux      # på Linux    → .tar.xz
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+Fyne navngiver Windows-filen efter visningsnavnet ("KeePass Delta-Sync.exe").
+`make package-windows` omdøber den bagefter til **`keepass-deltasync-gui.exe`**
+(så den matcher CLI'ens navn) uden at ændre det pæne navn i titellinje og
+fil-egenskaber.
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Ikonet (`icon.png`) er projektets fælles ikon — samme guldnøgle-med-sync-pile
+som Android-klienten. De to lag (baggrund + motiv) ligger i
+`tools/genicon/layers/`, og `go run ./tools/genicon` komponerer dem til
+`icon.png` med afrundede hjørner.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+Cross-compilering mellem OS'er er besværligt med CGO. Byg **nativt på hvert OS**,
+eller brug [`fyne-cross`](https://github.com/fyne-io/fyne-cross) (Docker) til at
+bygge til alle tre fra én maskine.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+---
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## 3. Hvordan GUI'en finder CLI'en
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+Ved opstart leder GUI'en efter `keepass-deltasync(.exe)` i denne rækkefølge:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+1. En sti du selv har valgt (gemt i `gui.json`).
+2. **Ved siden af GUI-programmet** — dette er den anbefalede måde at udgive på:
+   læg de to binærer i samme mappe.
+3. I systemets `PATH`.
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+Finder den ingenting, beder den dig pege på programmet. Du kan altid ændre stien
+under **Indstillinger**.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+GUI'ens egne præferencer (CLI-sti + sprog) ligger i:
 
-## License
-For open source projects, say how it is licensed.
+- Windows: `%AppData%\keepass-deltasync-gui\gui.json`
+- Linux: `~/.config/keepass-deltasync-gui/gui.json`
+- macOS: `~/Library/Application Support/keepass-deltasync-gui/gui.json`
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Klientens egentlige konfiguration (server-token, nøgler, database-bindinger)
+ejes som altid af CLI'en og ligger i dens egen `config.toml`.
+
+---
+
+## 4. Sådan kommer en bruger i gang (guiden)
+
+1. **Start programmet.** Er enheden ikke tilmeldt endnu, åbner guiden automatisk.
+2. **Trin 1 — Tilmeld enhed:** indtast server-adressen og det enrollment-token
+   du har fået af din administrator. (Svarer til `keepass-deltasync enroll`.)
+3. **Trin 2 — Tilføj database:** giv din lokale `.kdbx` et kort navn og vælg
+   filen. (Svarer til `keepass-deltasync init`.)
+4. **Færdig.** Dashboardet viser dine databaser. Klik **Synkronisér** på en
+   database, indtast dit masterpassword, og ændringer sendes/hentes.
+   (Svarer til `keepass-deltasync sync <navn> --password-stdin` — passwordet
+   sendes via stdin og optræder aldrig på kommandolinjen.)
+
+Sproget kan skiftes mellem **dansk** og **engelsk** under Indstillinger.
+
+---
+
+## 5. Hvad GUI'en understøtter i dag
+
+| Funktion | CLI-kommando bag |
+|----------|------------------|
+| Tilmeld enhed (guide) | `enroll` |
+| Tilføj lokal database | `init` |
+| Vis databaser + status | `databases`, `status` |
+| Synkronisér én / alle | `sync --password-stdin` |
+| Aktivitetslog (CLI-output) | — |
+
+Endnu **ikke** i GUI'en (men findes i CLI'en — gode næste skridt):
+`daemon` (automatisk baggrunds-sync), `share` / `unshare` / `shares`,
+`init-shared`, `versions` / `restore`, `init --bind` for server-databaser der
+kun vises som "kun på server".
+
+---
+
+## 6. Projektstruktur
+
+| Fil | Ansvar |
+|-----|--------|
+| `main.go` | App-opstart, vindue, routing (guide vs. dashboard) |
+| `cli.go` | Find + kald CLI'en, parse `status` / `databases` |
+| `wizard.go` | Onboarding-guiden (tilmeld → tilføj database) |
+| `dashboard.go` | Faneblade: databaser, aktivitet, indstillinger |
+| `settings.go` | GUI'ens egne præferencer (`gui.json`) |
+| `i18n.go` | Dansk/engelsk strenge |
+| `helpers.go` | Async-kald på UI-tråd, log, småting |
+
+## Licens
+
+GPL-3.0-or-later — samme som `keepass-deltasync`-klienten, som den kalder.
