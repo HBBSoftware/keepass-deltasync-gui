@@ -82,15 +82,16 @@ build:
     - fyne package -os linux
     - mv ./*.tar.xz "dist/keepass-deltasync-gui-${VERSION}-linux-amd64.tar.xz"
     # --- Windows (cross-compiled via mingw-w64) → .exe with embedded icon ---
-    # Debian's mingw-w64 enables stack-protector + _FORTIFY_SOURCE by default,
-    # but Go's cgo link step doesn't pull in libssp, so glfw's C objects fail to
-    # link with "undefined reference to __stack_chk_fail / __chk_fail". Disable
-    # both for the C code so those symbols are never emitted. NB: use
-    # -U_FORTIFY_SOURCE (undefine), NOT -D_FORTIFY_SOURCE=0 — the latter *re*defines
-    # the spec's value and runtime/cgo (built with -Werror) rejects the warning.
+    # Debian's mingw-w64 hardens by default (stack-protector + _FORTIFY_SOURCE),
+    # and -fno-stack-protector does NOT override its --enable-default-ssp here, so
+    # glfw's C objects keep referencing __stack_chk_fail / __stack_chk_guard /
+    # __chk_fail. Go's cgo link doesn't auto-pull libssp (which provides them).
+    # Fix: give the LINKER -fstack-protector so gcc links libssp. -U_FORTIFY_SOURCE
+    # in CFLAGS avoids the runtime/cgo -Werror "_FORTIFY_SOURCE redefined" error.
     - echo "==> Packaging Windows"
     - CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc
-        CGO_CFLAGS="-fno-stack-protector -U_FORTIFY_SOURCE"
+        CGO_CFLAGS="-U_FORTIFY_SOURCE"
+        CGO_LDFLAGS="-fstack-protector"
         fyne package -os windows
     - mv ./*.exe "dist/keepass-deltasync-gui-${VERSION}-windows-amd64.exe"
     # --- Checksums ---
