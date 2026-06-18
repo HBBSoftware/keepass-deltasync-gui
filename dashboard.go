@@ -294,18 +294,29 @@ func (u *ui) setupSharedDB(db database) {
 	})
 }
 
-// forgetDatabase fjerner den lokale binding via `forget <name>`. Det rører
-// hverken .kdbx-filen eller databasen på serveren — kun koblingen i config.
+// forgetDatabase fjerner den lokale binding. Det rører hverken .kdbx-filen eller
+// databasen på serveren — kun koblingen i config.
+//
+// Den prøver FØRST med GUID (db.ID) — symmetrisk med `init --bind <uuid>` og
+// robust hvis bindingen blev oprettet forkert og mangler/har et forkert navn.
+// Falder tilbage til navn hvis CLI'ens `forget` ikke kan opløse GUID'et (f.eks.
+// en ældre CLI der kun tager navn). Begge tilfælde rammer dermed samme knap.
 func (u *ui) forgetDatabase(db database) {
 	msg := fmt.Sprintf(L.ConfirmForget, db.Name)
 	dialog.ShowConfirm(L.ForgetDatabase, msg, func(ok bool) {
 		if !ok {
 			return
 		}
-		name := db.Name
+		name, id := db.Name, db.ID
 		u.async(func() any {
 			ctx, cancel := withTimeout(30 * time.Second)
 			defer cancel()
+			if id != "" {
+				if r := u.c.run(ctx, "", "forget", id); r.Err == nil || name == "" {
+					return r
+				}
+				// GUID kunne ikke opløses — prøv navn som fallback.
+			}
 			return u.c.run(ctx, "", "forget", name)
 		}, func(v any) {
 			r := v.(result)
