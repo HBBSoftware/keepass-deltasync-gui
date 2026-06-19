@@ -111,6 +111,14 @@ func indented(o fyne.CanvasObject) fyne.CanvasObject {
 	return container.NewBorder(nil, nil, pad, nil, o)
 }
 
+// topPad lægger en lille tom margin oven over et element — bruges til at give
+// luft mellem fanebladene og fanens øverste knaprække.
+func topPad(o fyne.CanvasObject) fyne.CanvasObject {
+	pad := canvas.NewRectangle(color.Transparent)
+	pad.SetMinSize(fyne.NewSize(0, 8))
+	return container.NewBorder(pad, nil, nil, nil, o)
+}
+
 // uriToPath konverterer en Fyne-URI fra en fildialog til en OS-sti. På Windows
 // kan Fyne give "/C:/sti" — den ledende skråstreg fjernes så Go's exec/os kan
 // bruge stien.

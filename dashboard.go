@@ -35,12 +35,12 @@ func (u *ui) showDashboard() {
 	debugf("showDashboard: settingsTab built")
 
 	tabs := container.NewAppTabs(
-		container.NewTabItem(L.TabDatabases, dbTab),
-		container.NewTabItem(L.TabDevices, devTab),
-		container.NewTabItem(L.TabActivity, actTab),
-		container.NewTabItem(L.TabLog, lgTab),
-		container.NewTabItem(L.TabAdmin, adTab),
-		container.NewTabItem(L.TabSettings, setTab),
+		container.NewTabItem(L.TabDatabases, topPad(dbTab)),
+		container.NewTabItem(L.TabDevices, topPad(devTab)),
+		container.NewTabItem(L.TabActivity, topPad(actTab)),
+		container.NewTabItem(L.TabLog, topPad(lgTab)),
+		container.NewTabItem(L.TabAdmin, topPad(adTab)),
+		container.NewTabItem(L.TabSettings, topPad(setTab)),
 	)
 
 	if helpEnabled {
