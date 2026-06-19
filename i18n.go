@@ -70,9 +70,28 @@ type dict struct {
 	TabDatabases string
 	TabDevices   string
 	TabActivity  string
+	TabLog       string
+	TabAdmin     string
 	TabSettings  string
 	ActivityHint string
 	Clear        string
+
+	// Log-fane (server-audit-log)
+	LogHint         string
+	LogCount        string
+	LogEmpty        string
+	LogPeriodLabel  string
+	LogPeriod24h    string
+	LogPeriod7d     string
+	LogPeriod30d    string
+	LogPeriodAll    string
+	LogDetailsTitle string
+	LogColTime      string
+	LogColEvent     string
+	LogColLevel     string
+	LogColIP        string
+	LogOK           string
+	LogFail         string
 
 	// Enheder-fane
 	ColEnrolled     string
@@ -100,6 +119,11 @@ type dict struct {
 	AddDatabase         string
 	ForgetDatabase      string
 	ConfirmForget       string // "%s" = db-navn
+	MoreActions         string
+	PushNow             string
+	PullNow             string
+	DeleteOnServer      string
+	ConfirmDeleteServer string // "%q" = db-navn
 	NoDatabases         string
 	DBCount             string
 	ColName             string
@@ -140,7 +164,47 @@ type dict struct {
 	MasterPwd         string
 	MasterPwdFor      string
 	Language          string
+	ThemeLabel        string
+	ThemeSystem       string
+	ThemeLight        string
+	ThemeDark         string
+	HelpPanelLabel    string
+	HelpPanelDesc     string
+	HelpTitle         string
+	HelpDatabases     string
+	HelpDevices       string
+	HelpActivity      string
+	HelpLog           string
+	HelpAdmin         string
+	HelpSettings      string
 	ResetEnroll       string
+
+	// Administration-fane
+	AdminHint         string
+	AdminNeedToken    string
+	AdminLoadUsers    string
+	AdminCreateUser   string
+	AdminTokenHelp    string
+	AdminUserCount    string // "%d"
+	AdminNewEnroll    string
+	AdminEnable       string
+	AdminDisable      string
+	AdminDeleteUser   string
+	AdminDisplayName  string
+	ConfirmDeleteUser string // "%q" = brugernavn
+
+	// Versioner / gendan
+	VersionsMenu    string
+	VersionsTitle   string // "%s" = db-navn
+	VersionsHint    string
+	EntryUUID       string
+	EntryUUIDHint   string
+	VersionsShow    string
+	VersionsCount   string // "%d"
+	VersionsNone    string
+	VersionsRestore string
+	ConfirmRestore  string // "%s" = version, "%q" = db-navn
+	RestoreDoneSync string
 }
 
 var dicts = map[lang]*dict{
@@ -186,9 +250,27 @@ var dicts = map[lang]*dict{
 		TabDatabases: "Databaser",
 		TabDevices:   "Enheder",
 		TabActivity:  "Aktivitet",
+		TabLog:       "Log",
+		TabAdmin:     "Administration",
 		TabSettings:  "Indstillinger",
 		ActivityHint: "Output fra CLI-kald (sync, tilføj/fjern, fejl …) vises her.",
 		Clear:        "Ryd",
+
+		LogHint:         "Server-aktivitetslog (audit) — historik på tværs af enheder, gemt i op til 30 dage.",
+		LogCount:        "%d log-poster",
+		LogEmpty:        "(ingen log-poster i perioden)",
+		LogPeriodLabel:  "Periode:",
+		LogPeriod24h:    "Seneste 24 timer",
+		LogPeriod7d:     "Seneste 7 dage",
+		LogPeriod30d:    "Seneste 30 dage",
+		LogPeriodAll:    "Alle",
+		LogDetailsTitle: "Log-detaljer",
+		LogColTime:      "Tidspunkt",
+		LogColEvent:     "Hændelse",
+		LogColLevel:     "Niveau",
+		LogColIP:        "IP-adresse",
+		LogOK:           "OK",
+		LogFail:         "Fejlede",
 
 		ColEnrolled:     "Tilmeldt",
 		ColLastSeen:     "Sidst set",
@@ -215,6 +297,11 @@ var dicts = map[lang]*dict{
 		AddDatabase:         "Tilføj database",
 		ForgetDatabase:      "Glem database",
 		ConfirmForget:       "Glem den lokale binding for %q? Selve .kdbx-filen og databasen på serveren røres IKKE — kun koblingen i denne klient fjernes.",
+		MoreActions:         "Flere handlinger",
+		PushNow:             "Push nu (kun upload)",
+		PullNow:             "Pull nu (kun download)",
+		DeleteOnServer:      "Slet på server",
+		ConfirmDeleteServer: "Slet databasen %q PERMANENT på serveren?\n\nDette fjerner ALLE entries, versioner, delinger og historik — for alle brugere. Handlingen kan IKKE fortrydes. Din lokale .kdbx-fil røres ikke.",
 		NoDatabases:         "Ingen databaser endnu. Klik 'Tilføj database' for at komme i gang.",
 		DBCount:             "%d database(r) tilkoblet",
 		ColName:             "Navn",
@@ -253,7 +340,98 @@ var dicts = map[lang]*dict{
 		MasterPwd:         "Masterpassword",
 		MasterPwdFor:      "Masterpassword for",
 		Language:          "Sprog",
-		ResetEnroll:       "Nulstil tilmelding",
+		ThemeLabel:        "Tema",
+		ThemeSystem:       "System (følg styresystem)",
+		ThemeLight:        "Lyst",
+		ThemeDark:         "Mørkt",
+		HelpPanelLabel:    "Vis hjælpe-panel",
+		HelpPanelDesc:     "Når slået til, vises et felt i bunden af vinduet med en beskrivelse af den fane du er på — hvad siden gør, og hvad knapperne svarer til i keepass-deltasync-programmet.",
+		HelpTitle:         "Om denne side",
+		HelpDatabases: "## Databaser\n\n" +
+			"Dine databaser og deres delinger. **● (fuld cirkel)** = bundet til en lokal `.kdbx`-fil og klar til synkronisering. **○ (åben cirkel)** = findes kun på serveren.\n\n" +
+			"**Handlinger pr. database:**\n\n" +
+			"- **Synkronisér** — send og hent ændringer (`sync`).\n" +
+			"- **Del** — giv en anden bruger adgang (`share`).\n" +
+			"- **Glem** — fjern kun den lokale binding; rører ikke serveren eller filen (`forget`).\n" +
+			"- **⋮ Flere** — Push (kun upload), Pull (kun download), Versioner/gendan, og **Slet på server** (`delete-database`, permanent for alle).\n\n" +
+			"Er en database kun på serveren: **Forbind** din egen `.kdbx` (`init --bind`) eller **Opsæt delt** kopi (`init-shared`).\n\n" +
+			"Øverst: **Tilføj database** (`init`) og **Synkronisér alle**.\n\n" +
+			"**CLI-kommandoer:**\n\n" +
+			"- `keepass-deltasync databases`\n" +
+			"- `keepass-deltasync init <navn> <sti>`\n" +
+			"- `keepass-deltasync sync --password-stdin <db>`\n" +
+			"- `keepass-deltasync push --password-stdin <db>` / `pull --password-stdin <db>`\n" +
+			"- `keepass-deltasync share --password-stdin <db> <bruger>` / `unshare <db> <bruger>` / `shares <db>`\n" +
+			"- `keepass-deltasync forget <db>` / `delete-database <db|uuid>`\n" +
+			"- `keepass-deltasync init --bind <uuid> <db> <sti>` / `init-shared --password-stdin <remote> <sti>`\n" +
+			"- `keepass-deltasync versions <db> <entry-uuid>` / `restore <db> <entry-uuid> <version>`",
+		HelpDevices: "## Enheder\n\n" +
+			"De enheder der er tilmeldt din konto (`devices`). Den **● markerede** er den du bruger nu.\n\n" +
+			"- **Tilføj enhed** — generér en enrollment-token som en ny enhed bruger til at tilmelde sig (`admin user-enrollment`).\n" +
+			"- **Fjern** — tilbagekald en enheds adgang (`devices remove`). Du kan ikke fjerne den enhed du sidder ved.\n" +
+			"- **Info** — se enhedens ID, samt tilmeldt- og sidst set-tidspunkt.\n\n" +
+			"**CLI-kommandoer:**\n\n" +
+			"- `keepass-deltasync devices`\n" +
+			"- `keepass-deltasync devices remove <id>`\n" +
+			"- `keepass-deltasync admin user-enrollment <bruger>`",
+		HelpActivity: "## Aktivitet\n\n" +
+			"Rå output fra de CLI-kald GUI'en laver i **denne session** (sync, tilføj/fjern, fejl …). Det nulstilles når appen lukkes.\n\n" +
+			"Vil du se historik på tværs af sessioner, så brug **Log**-fanen, der henter serverens audit-log.\n\n" +
+			"*Ingen egen CLI-kommando — fanen viser blot output fra de øvrige kommandoer.*",
+		HelpLog: "## Log\n\n" +
+			"Serverens **audit-log** (`log`) — en vedvarende historik over hændelser på din konto (login, sync, ændringer …), på tværs af alle dine enheder, gemt i op til 30 dage.\n\n" +
+			"- **Periode** styrer hvor langt tilbage der hentes (`--since`).\n" +
+			"- Hver linje viser tid, hændelse, OK/fejl, niveau og IP. Klik **ℹ** for fulde detaljer.\n\n" +
+			"**CLI-kommando:**\n\n" +
+			"- `keepass-deltasync log --since <varighed> --limit <n>`",
+		HelpAdmin: "## Administration\n\n" +
+			"Brugeradministration. Kræver en **admin-token**, der kun holdes i hukommelsen og aldrig gemmes på disk.\n\n" +
+			"- **Hent brugere** — liste over alle brugere (`admin user-list`).\n" +
+			"- **Opret bruger** — opret + få en enrollment-token (`admin user-create`).\n" +
+			"- Pr. bruger: **ny enrollment-token** (`user-enrollment`), **aktivér/deaktivér** (`user-enable` / `user-disable`), **slet** (`user-delete`, CASCADE).\n" +
+			"- **Hent admin-token (SQL)** — SQL til at oprette en frisk admin-token (`admin token-sql`); kør den i DBeaver.\n\n" +
+			"**CLI-kommandoer:**\n\n" +
+			"- `keepass-deltasync admin user-list`\n" +
+			"- `keepass-deltasync admin user-create <bruger> --display-name <navn>`\n" +
+			"- `keepass-deltasync admin user-enrollment <bruger>`\n" +
+			"- `keepass-deltasync admin user-enable <bruger>` / `user-disable <bruger>`\n" +
+			"- `keepass-deltasync admin user-delete <bruger> --yes`\n" +
+			"- `keepass-deltasync admin token-sql`",
+		HelpSettings: "## Indstillinger\n\n" +
+			"- **Sprog** — dansk eller engelsk.\n" +
+			"- **Tema** — System (følg styresystemet), Lyst eller Mørkt.\n" +
+			"- **Sti til CLI** — hvor `keepass-deltasync`-programmet ligger. GUI'en kalder det til alt arbejde.\n" +
+			"- **Vis hjælpe-panel** — dette felt.\n\n" +
+			"GUI'en er en skal oven på `keepass-deltasync`-kommandolinjen; al krypto, server-kald og config ligger i CLI'en.\n\n" +
+			"**Nyttige CLI-kommandoer:**\n\n" +
+			"- `keepass-deltasync status`\n" +
+			"- `keepass-deltasync enroll --server <url> <token>`",
+		ResetEnroll: "Nulstil tilmelding",
+
+		AdminHint:         "Brugeradministration. Kræver en admin-token (gemmes ikke på disk).",
+		AdminNeedToken:    "Indtast en admin-token og klik 'Hent brugere'.",
+		AdminLoadUsers:    "Hent brugere",
+		AdminCreateUser:   "Opret bruger",
+		AdminTokenHelp:    "Hent admin-token (SQL)",
+		AdminUserCount:    "%d bruger(e)",
+		AdminNewEnroll:    "Ny enrollment-token",
+		AdminEnable:       "Aktivér bruger",
+		AdminDisable:      "Deaktivér bruger",
+		AdminDeleteUser:   "Slet bruger",
+		AdminDisplayName:  "Visningsnavn (valgfrit)",
+		ConfirmDeleteUser: "Slet brugeren %q PERMANENT?\n\nCASCADE: alle brugerens enheder, databaser og entries fjernes. Handlingen kan IKKE fortrydes.",
+
+		VersionsMenu:    "Versioner / gendan…",
+		VersionsTitle:   "Versioner — %s",
+		VersionsHint:    "Indsæt en entry-UUID for at se dens bevarede versioner (op til 3).",
+		EntryUUID:       "Entry-UUID",
+		EntryUUIDHint:   "UUID på den entry du vil se versioner for",
+		VersionsShow:    "Vis versioner",
+		VersionsCount:   "%d version(er)",
+		VersionsNone:    "Ingen versioner — entry ikke fundet.",
+		VersionsRestore: "Gendan",
+		ConfirmRestore:  "Gendan version %s som ny nyeste version i %q?\n\nServeren opretter en ny version ud fra den valgte. Kør 'Synkronisér' (eller Pull) bagefter for at hente ændringen ned i din lokale fil.",
+		RestoreDoneSync: "Versionen er gendannet på serveren. Kør 'Synkronisér' (eller Pull) på databasen for at hente ændringen ned.",
 	},
 	langEN: {
 		AppTitle: "KeePass Delta-Sync",
@@ -297,9 +475,27 @@ var dicts = map[lang]*dict{
 		TabDatabases: "Databases",
 		TabDevices:   "Devices",
 		TabActivity:  "Activity",
+		TabLog:       "Log",
+		TabAdmin:     "Administration",
 		TabSettings:  "Settings",
 		ActivityHint: "Output from CLI calls (sync, add/remove, errors …) shows here.",
 		Clear:        "Clear",
+
+		LogHint:         "Server activity log (audit) — history across devices, kept for up to 30 days.",
+		LogCount:        "%d log entries",
+		LogEmpty:        "(no log entries in this period)",
+		LogPeriodLabel:  "Period:",
+		LogPeriod24h:    "Last 24 hours",
+		LogPeriod7d:     "Last 7 days",
+		LogPeriod30d:    "Last 30 days",
+		LogPeriodAll:    "All",
+		LogDetailsTitle: "Log details",
+		LogColTime:      "Time",
+		LogColEvent:     "Event",
+		LogColLevel:     "Level",
+		LogColIP:        "IP address",
+		LogOK:           "OK",
+		LogFail:         "Failed",
 
 		ColEnrolled:     "Enrolled",
 		ColLastSeen:     "Last seen",
@@ -326,6 +522,11 @@ var dicts = map[lang]*dict{
 		AddDatabase:         "Add database",
 		ForgetDatabase:      "Forget database",
 		ConfirmForget:       "Forget the local binding for %q? The .kdbx file and the database on the server are NOT touched — only the binding in this client is removed.",
+		MoreActions:         "More actions",
+		PushNow:             "Push now (upload only)",
+		PullNow:             "Pull now (download only)",
+		DeleteOnServer:      "Delete on server",
+		ConfirmDeleteServer: "Delete the database %q PERMANENTLY on the server?\n\nThis removes ALL entries, versions, shares and history — for every user. This action CANNOT be undone. Your local .kdbx file is left untouched.",
 		NoDatabases:         "No databases yet. Click 'Add database' to get started.",
 		DBCount:             "%d database(s) connected",
 		ColName:             "Name",
@@ -364,6 +565,97 @@ var dicts = map[lang]*dict{
 		MasterPwd:         "Master password",
 		MasterPwdFor:      "Master password for",
 		Language:          "Language",
-		ResetEnroll:       "Reset enrollment",
+		ThemeLabel:        "Theme",
+		ThemeSystem:       "System (follow OS)",
+		ThemeLight:        "Light",
+		ThemeDark:         "Dark",
+		HelpPanelLabel:    "Show help panel",
+		HelpPanelDesc:     "When enabled, a panel at the bottom of the window describes the tab you are on — what the page does, and what the buttons map to in the keepass-deltasync program.",
+		HelpTitle:         "About this page",
+		HelpDatabases: "## Databases\n\n" +
+			"Your databases and their shares. **● (filled circle)** = bound to a local `.kdbx` file and ready to sync. **○ (open circle)** = exists on the server only.\n\n" +
+			"**Per-database actions:**\n\n" +
+			"- **Sync** — send and fetch changes (`sync`).\n" +
+			"- **Share** — give another user access (`share`).\n" +
+			"- **Forget** — remove the local binding only; leaves the server and file untouched (`forget`).\n" +
+			"- **⋮ More** — Push (upload only), Pull (download only), Versions/restore, and **Delete on server** (`delete-database`, permanent for everyone).\n\n" +
+			"If a database is server-only: **Bind** your own `.kdbx` (`init --bind`) or **Set up shared** copy (`init-shared`).\n\n" +
+			"Top: **Add database** (`init`) and **Sync all**.\n\n" +
+			"**CLI commands:**\n\n" +
+			"- `keepass-deltasync databases`\n" +
+			"- `keepass-deltasync init <name> <path>`\n" +
+			"- `keepass-deltasync sync --password-stdin <db>`\n" +
+			"- `keepass-deltasync push --password-stdin <db>` / `pull --password-stdin <db>`\n" +
+			"- `keepass-deltasync share --password-stdin <db> <user>` / `unshare <db> <user>` / `shares <db>`\n" +
+			"- `keepass-deltasync forget <db>` / `delete-database <db|uuid>`\n" +
+			"- `keepass-deltasync init --bind <uuid> <db> <path>` / `init-shared --password-stdin <remote> <path>`\n" +
+			"- `keepass-deltasync versions <db> <entry-uuid>` / `restore <db> <entry-uuid> <version>`",
+		HelpDevices: "## Devices\n\n" +
+			"The devices enrolled on your account (`devices`). The **● marked** one is the device you are using now.\n\n" +
+			"- **Add device** — generate an enrollment token a new device uses to enroll (`admin user-enrollment`).\n" +
+			"- **Remove** — revoke a device's access (`devices remove`). You cannot remove the device you are on.\n" +
+			"- **Info** — see the device ID and its enrolled / last-seen times.\n\n" +
+			"**CLI commands:**\n\n" +
+			"- `keepass-deltasync devices`\n" +
+			"- `keepass-deltasync devices remove <id>`\n" +
+			"- `keepass-deltasync admin user-enrollment <user>`",
+		HelpActivity: "## Activity\n\n" +
+			"Raw output from the CLI calls the GUI makes in **this session** (sync, add/remove, errors …). It resets when the app closes.\n\n" +
+			"For history across sessions, use the **Log** tab, which fetches the server's audit log.\n\n" +
+			"*No CLI command of its own — the tab just shows output from the other commands.*",
+		HelpLog: "## Log\n\n" +
+			"The server's **audit log** (`log`) — a persistent history of events on your account (login, sync, changes …), across all your devices, kept for up to 30 days.\n\n" +
+			"- **Period** controls how far back to fetch (`--since`).\n" +
+			"- Each line shows time, event, OK/fail, level and IP. Click **ℹ** for full details.\n\n" +
+			"**CLI command:**\n\n" +
+			"- `keepass-deltasync log --since <duration> --limit <n>`",
+		HelpAdmin: "## Administration\n\n" +
+			"User administration. Requires an **admin token**, held only in memory and never stored on disk.\n\n" +
+			"- **Load users** — list all users (`admin user-list`).\n" +
+			"- **Create user** — create + get an enrollment token (`admin user-create`).\n" +
+			"- Per user: **new enrollment token** (`user-enrollment`), **enable/disable** (`user-enable` / `user-disable`), **delete** (`user-delete`, CASCADE).\n" +
+			"- **Get admin token (SQL)** — SQL to create a fresh admin token (`admin token-sql`); run it in DBeaver.\n\n" +
+			"**CLI commands:**\n\n" +
+			"- `keepass-deltasync admin user-list`\n" +
+			"- `keepass-deltasync admin user-create <user> --display-name <name>`\n" +
+			"- `keepass-deltasync admin user-enrollment <user>`\n" +
+			"- `keepass-deltasync admin user-enable <user>` / `user-disable <user>`\n" +
+			"- `keepass-deltasync admin user-delete <user> --yes`\n" +
+			"- `keepass-deltasync admin token-sql`",
+		HelpSettings: "## Settings\n\n" +
+			"- **Language** — Danish or English.\n" +
+			"- **Theme** — System (follow the OS), Light or Dark.\n" +
+			"- **CLI path** — where the `keepass-deltasync` program lives. The GUI calls it for all work.\n" +
+			"- **Show help panel** — this panel.\n\n" +
+			"The GUI is a shell over the `keepass-deltasync` command line; all crypto, server calls and config live in the CLI.\n\n" +
+			"**Useful CLI commands:**\n\n" +
+			"- `keepass-deltasync status`\n" +
+			"- `keepass-deltasync enroll --server <url> <token>`",
+		ResetEnroll: "Reset enrollment",
+
+		AdminHint:         "User administration. Requires an admin token (not stored on disk).",
+		AdminNeedToken:    "Enter an admin token and click 'Load users'.",
+		AdminLoadUsers:    "Load users",
+		AdminCreateUser:   "Create user",
+		AdminTokenHelp:    "Get admin token (SQL)",
+		AdminUserCount:    "%d user(s)",
+		AdminNewEnroll:    "New enrollment token",
+		AdminEnable:       "Enable user",
+		AdminDisable:      "Disable user",
+		AdminDeleteUser:   "Delete user",
+		AdminDisplayName:  "Display name (optional)",
+		ConfirmDeleteUser: "Delete the user %q PERMANENTLY?\n\nCASCADE: all of the user's devices, databases and entries are removed. This action CANNOT be undone.",
+
+		VersionsMenu:    "Versions / restore…",
+		VersionsTitle:   "Versions — %s",
+		VersionsHint:    "Paste an entry UUID to see its preserved versions (up to 3).",
+		EntryUUID:       "Entry UUID",
+		EntryUUIDHint:   "UUID of the entry you want versions for",
+		VersionsShow:    "Show versions",
+		VersionsCount:   "%d version(s)",
+		VersionsNone:    "No versions — entry not found.",
+		VersionsRestore: "Restore",
+		ConfirmRestore:  "Restore version %s as the new current version in %q?\n\nThe server creates a new version from the selected one. Run 'Sync' (or Pull) afterwards to bring the change into your local file.",
+		RestoreDoneSync: "The version was restored on the server. Run 'Sync' (or Pull) on the database to bring the change down.",
 	},
 }

@@ -81,6 +81,28 @@ func prettyTime(s string) string {
 	return s
 }
 
+// prettyTimeSec er som prettyTime, men medtager sekunder — bruges i detalje-
+// popups hvor det præcise tidspunkt er relevant (fx for at skelne log-poster
+// inden for samme minut).
+func prettyTimeSec(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	layouts := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05.999999Z07:00",
+		"2006-01-02 15:04:05.999999-07",
+		"2006-01-02 15:04:05",
+	}
+	for _, l := range layouts {
+		if t, err := time.Parse(l, s); err == nil {
+			return t.Local().Format("2006-01-02 15:04:05")
+		}
+	}
+	return s
+}
+
 // indented rykker et element ind med en fast venstre-margin, så medlemslinjer
 // under en database fremstår visuelt underordnet den.
 func indented(o fyne.CanvasObject) fyne.CanvasObject {

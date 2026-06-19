@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -323,6 +324,63 @@ func (c *cli) devices(ctx context.Context) ([]device, result) {
 	return out, r
 }
 
+// logEntry er én række fra serverens audit-log (`keepass-deltasync log`).
+type logEntry struct {
+	Time  string // OccurredAt, server-tidsstempel (ISO/space-format)
+	Level string // info / warn / error …
+	Event string // event-type, fx "sync.push", "device.enroll"
+	OK    bool   // Success
+	IP    string // klient-IP (kan være tom)
+}
+
+// logEntries spejler `keepass-deltasync log [--since DUR] [--limit N]` og parser
+// tabwriter-tabellen. since er en Go-duration ("24h", "168h"); tom = intet
+// filter. Tabellen ser sådan ud (kolonner adskilt af ≥2 mellemrum):
+//
+//	TIME                  LEVEL  EVENT       OK    IP
+//	2026-06-19T07:46:16Z  info   sync.push   OK    1.2.3.4
+//
+// Loggen ligger på SERVEREN (audit, op til 30 dages historik) — derfor viser
+// den aktivitet på tværs af alle enheder, ikke kun denne klient.
+func (c *cli) logEntries(ctx context.Context, since string, limit int) ([]logEntry, result) {
+	args := []string{"log"}
+	if since != "" {
+		args = append(args, "--since", since)
+	}
+	if limit > 0 {
+		args = append(args, "--limit", strconv.Itoa(limit))
+	}
+	r := c.run(ctx, "", args...)
+	if r.Err != nil {
+		return nil, r
+	}
+	var out []logEntry
+	for _, line := range strings.Split(r.Stdout, "\n") {
+		t := strings.TrimRight(line, "\r\n")
+		if strings.TrimSpace(t) == "" {
+			continue
+		}
+		if strings.Contains(t, "TIME") && strings.Contains(t, "LEVEL") {
+			continue // header
+		}
+		if strings.HasPrefix(strings.TrimSpace(t), "(") {
+			continue // "(no log entries)"
+		}
+		// TIME kan indeholde ét internt mellemrum (dato + tid); multiSpace
+		// splitter kun på ≥2 mellemrum, så tidsstemplet forbliver ét felt.
+		fields := multiSpace.Split(strings.TrimSpace(t), -1)
+		if len(fields) < 4 {
+			continue
+		}
+		e := logEntry{Time: fields[0], Level: fields[1], Event: fields[2], OK: fields[3] == "OK"}
+		if len(fields) >= 5 {
+			e.IP = fields[4]
+		}
+		out = append(out, e)
+	}
+	return out, r
+}
+
 // enroll spejler `keepass-deltasync enroll --server URL [--device-name N] token`.
 func (c *cli) enroll(ctx context.Context, serverURL, deviceName, token string) result {
 	args := []string{"enroll", "--server", serverURL}
@@ -375,6 +433,153 @@ func (c *cli) initBind(ctx context.Context, name, localPath, uuid string) result
 // ejerens password).
 func (c *cli) initShared(ctx context.Context, remoteName, localPath, newPassword string) result {
 	return c.run(ctx, newPassword+"\n", "init-shared", "--password-stdin", remoteName, localPath)
+}
+
+// push spejler `keepass-deltasync push --password-stdin <name>` — ensrettet
+// upload (som sync, men uden at pulle først). Masterpasswordet bruges lokalt til
+// at læse den lokale .kdbx og sendes via stdin. Flaget SKAL stå før <name>.
+func (c *cli) push(ctx context.Context, name, masterPassword string) result {
+	return c.run(ctx, masterPassword+"\n", "push", "--password-stdin", name)
+}
+
+// pull spejler `keepass-deltasync pull --password-stdin <name>` — ensrettet
+// download/merge fra serveren. Flaget SKAL stå før <name>.
+func (c *cli) pull(ctx context.Context, name, masterPassword string) result {
+	return c.run(ctx, masterPassword+"\n", "pull", "--password-stdin", name)
+}
+
+// deleteDatabase spejler `keepass-deltasync delete-database <id-eller-navn>` —
+// sletter databasen PERMANENT på serveren (entries, versioner, delinger og
+// historik; CASCADE). Kun ejeren kan slette. target er helst UUID'et (virker
+// også for databaser der ikke er bundet lokalt), med navn som fallback. Den
+// lokale .kdbx-fil røres aldrig.
+func (c *cli) deleteDatabase(ctx context.Context, target string) result {
+	return c.run(ctx, "", "delete-database", target)
+}
+
+// adminUser er én række fra `keepass-deltasync admin user-list`.
+type adminUser struct {
+	Username  string
+	Display   string
+	Status    string // "active" / "disabled"
+	Devices   string // antal enheder (som tekst, direkte fra tabellen)
+	Databases string // antal databaser
+	Created   string // oprettelsesdato (YYYY-MM-DD)
+	Disabled  bool
+}
+
+// adminUserList spejler `admin user-list --admin-token <tok>` og parser tabellen:
+//
+//	USERNAME  DISPLAY  STATUS  DEVICES  DATABASES  CREATED
+//	hans      Hans B.  active  2        3          2026-06-01
+func (c *cli) adminUserList(ctx context.Context, adminToken string) ([]adminUser, result) {
+	r := c.run(ctx, "", "admin", "user-list", "--admin-token", adminToken)
+	if r.Err != nil {
+		return nil, r
+	}
+	var out []adminUser
+	for _, line := range strings.Split(r.Stdout, "\n") {
+		t := strings.TrimRight(line, "\r\n")
+		if strings.TrimSpace(t) == "" {
+			continue
+		}
+		if strings.Contains(t, "USERNAME") && strings.Contains(t, "STATUS") {
+			continue // header
+		}
+		if strings.HasPrefix(strings.TrimSpace(t), "(") {
+			continue // "(no users)"
+		}
+		f := multiSpace.Split(strings.TrimSpace(t), -1)
+		if len(f) < 6 {
+			continue
+		}
+		out = append(out, adminUser{
+			Username: f[0], Display: f[1], Status: f[2],
+			Devices: f[3], Databases: f[4], Created: f[5],
+			Disabled: f[2] == "disabled",
+		})
+	}
+	return out, r
+}
+
+// adminUserCreate spejler `admin user-create <username> [--display-name N] --admin-token <tok>`.
+func (c *cli) adminUserCreate(ctx context.Context, adminToken, username, displayName string) result {
+	args := []string{"admin", "user-create", username, "--admin-token", adminToken}
+	if displayName != "" {
+		args = append(args, "--display-name", displayName)
+	}
+	return c.run(ctx, "", args...)
+}
+
+// adminUserEnrollment spejler `admin user-enrollment <username> --admin-token <tok>`.
+func (c *cli) adminUserEnrollment(ctx context.Context, adminToken, username string) result {
+	return c.run(ctx, "", "admin", "user-enrollment", username, "--admin-token", adminToken)
+}
+
+// adminSetDisabled spejler `admin user-disable|user-enable <username> --admin-token <tok>`.
+func (c *cli) adminSetDisabled(ctx context.Context, adminToken, username string, disabled bool) result {
+	sub := "user-enable"
+	if disabled {
+		sub = "user-disable"
+	}
+	return c.run(ctx, "", "admin", sub, username, "--admin-token", adminToken)
+}
+
+// adminUserDelete spejler `admin user-delete <username> --yes --admin-token <tok>`.
+// --yes springer CLI'ens interaktive stdin-bekræftelse over (som GUI'en ikke kan
+// besvare); vi bekræfter i stedet i en dialog FØR dette kald.
+func (c *cli) adminUserDelete(ctx context.Context, adminToken, username string) result {
+	return c.run(ctx, "", "admin", "user-delete", username, "--yes", "--admin-token", adminToken)
+}
+
+// adminTokenSQL spejler `admin token-sql` — printer SQL til at oprette en frisk
+// admin-token (kræver ingen token selv).
+func (c *cli) adminTokenSQL(ctx context.Context) result {
+	return c.run(ctx, "", "admin", "token-sql")
+}
+
+// entryVersion er én række fra `keepass-deltasync versions <name> <uuid>`.
+type entryVersion struct {
+	Num      string // "1".."3"
+	State    string // "current"/"previous"/"oldest" (+ evt. " (deleted)")
+	Modified string
+	Created  string
+}
+
+// versions spejler `versions <name> <entry-uuid>` og parser tabellen:
+//
+//	VER  STATE     MODIFIED              CREATED
+//	3    current   2026-06-19T05:52:27Z  2026-06-18T10:00:00Z
+func (c *cli) versions(ctx context.Context, name, entryUUID string) ([]entryVersion, result) {
+	r := c.run(ctx, "", "versions", name, entryUUID)
+	if r.Err != nil {
+		return nil, r
+	}
+	var out []entryVersion
+	for _, line := range strings.Split(r.Stdout, "\n") {
+		t := strings.TrimRight(line, "\r\n")
+		if strings.TrimSpace(t) == "" {
+			continue
+		}
+		if strings.Contains(t, "VER") && strings.Contains(t, "STATE") {
+			continue // header
+		}
+		if strings.HasPrefix(strings.TrimSpace(t), "(") {
+			continue // "(no versions …)"
+		}
+		f := multiSpace.Split(strings.TrimSpace(t), -1)
+		if len(f) < 4 {
+			continue
+		}
+		out = append(out, entryVersion{Num: f[0], State: f[1], Modified: f[2], Created: f[3]})
+	}
+	return out, r
+}
+
+// restore spejler `restore <name> <entry-uuid> <version-num>` — promoverer en
+// gammel version til ny nyeste server-side. Brugeren skal sync'e bagefter.
+func (c *cli) restore(ctx context.Context, name, entryUUID, versionNum string) result {
+	return c.run(ctx, "", "restore", name, entryUUID, versionNum)
 }
 
 // withTimeout giver en context med en fornuftig grænse til en CLI-kørsel.

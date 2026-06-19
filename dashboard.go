@@ -27,6 +27,10 @@ func (u *ui) showDashboard() {
 	debugf("showDashboard: devicesTab built")
 	actTab := u.activityTab()
 	debugf("showDashboard: activityTab built")
+	lgTab := u.logTab()
+	debugf("showDashboard: logTab built")
+	adTab := u.adminTab()
+	debugf("showDashboard: adminTab built")
 	setTab := u.settingsTab()
 	debugf("showDashboard: settingsTab built")
 
@@ -34,9 +38,21 @@ func (u *ui) showDashboard() {
 		container.NewTabItem(L.TabDatabases, dbTab),
 		container.NewTabItem(L.TabDevices, devTab),
 		container.NewTabItem(L.TabActivity, actTab),
+		container.NewTabItem(L.TabLog, lgTab),
+		container.NewTabItem(L.TabAdmin, adTab),
 		container.NewTabItem(L.TabSettings, setTab),
 	)
-	u.win.SetContent(tabs)
+
+	if helpEnabled {
+		// Wiki-agtigt hjælpe-panel i bunden, der følger den valgte fane.
+		panel := u.buildHelpPanel()
+		u.updateHelp(tabs.SelectedIndex())
+		tabs.OnSelected = func(*container.TabItem) { u.updateHelp(tabs.SelectedIndex()) }
+		u.win.SetContent(container.NewBorder(nil, panel, nil, nil, tabs))
+	} else {
+		u.helpText = nil
+		u.win.SetContent(tabs)
+	}
 	debugf("showDashboard: content set")
 
 	u.refreshStatus()
@@ -96,20 +112,21 @@ func (u *ui) dbCard(db database, members []member, memErr string) fyne.CanvasObj
 	path.Truncation = fyne.TextTruncateEllipsis
 
 	info := newHintIconButton(L.DBInfoTitle, theme.InfoIcon(), func() { u.showDBInfo(db) }, u.setHint)
+	more := u.dbMoreButton(db)
 	var actions *fyne.Container
 	if db.Bound {
 		sync := newHintIconButton(L.Sync, theme.ViewRefreshIcon(), func() { u.promptSync(db.Name) }, u.setHint)
 		sync.Importance = widget.HighImportance
 		share := newHintIconButton(L.ShareDatabase, theme.MailForwardIcon(), func() { u.shareDatabase(db) }, u.setHint)
 		forget := newHintIconButton(L.ForgetDatabase, theme.CancelIcon(), func() { u.forgetDatabase(db) }, u.setHint)
-		actions = container.NewHBox(sync, share, forget, info)
+		actions = container.NewHBox(sync, share, forget, more, info)
 	} else {
 		// Server-only: enten forbinde din EGEN eksisterende database (ny enhed,
 		// init --bind) eller sætte en database op som er DELT med dig (init-shared).
 		bind := newHintIconButton(L.BindExisting, theme.FolderOpenIcon(), func() { u.bindDatabase(db) }, u.setHint)
 		bind.Importance = widget.HighImportance
 		setup := newHintIconButton(L.SetupShared, theme.DownloadIcon(), func() { u.setupSharedDB(db) }, u.setHint)
-		actions = container.NewHBox(bind, setup, info)
+		actions = container.NewHBox(bind, setup, more, info)
 	}
 
 	header := container.NewBorder(nil, nil, left, actions, path)
@@ -318,15 +335,106 @@ func (u *ui) forgetDatabase(db database) {
 				// GUID kunne ikke opløses — prøv navn som fallback.
 			}
 			return u.c.run(ctx, "", "forget", name)
-		}, func(v any) {
-			r := v.(result)
-			u.log(r.Combined())
-			if r.Err != nil {
-				dialog.ShowError(errSimple(describeErr(r)), u.win)
-				return
-			}
-			u.refreshDatabases()
-		})
+		}, u.afterDBOp)
+	}, u.win)
+}
+
+// dbMoreButton laver en "flere handlinger"-knap (⋮) der åbner en popup-menu med
+// de mindre brugte database-operationer, så rækken ikke fyldes med ikoner: for
+// bundne databaser push/pull (ensrettet sync) + slet-på-server; for server-only
+// kun slet-på-server.
+func (u *ui) dbMoreButton(db database) *hintIconButton {
+	more := newHintIconButton(L.MoreActions, theme.MoreVerticalIcon(), nil, u.setHint)
+	more.OnTapped = func() {
+		var items []*fyne.MenuItem
+		if db.Bound {
+			items = append(items,
+				fyne.NewMenuItem(L.PushNow, func() { u.pushDatabase(db) }),
+				fyne.NewMenuItem(L.PullNow, func() { u.pullDatabase(db) }),
+				fyne.NewMenuItem(L.VersionsMenu, func() { u.showVersionsDialog(db) }),
+				fyne.NewMenuItemSeparator(),
+			)
+		}
+		del := fyne.NewMenuItem(L.DeleteOnServer, func() { u.deleteDatabaseServer(db) })
+		items = append(items, del)
+
+		menu := fyne.NewMenu("", items...)
+		pos := u.fApp.Driver().AbsolutePositionForObject(more)
+		widget.ShowPopUpMenuAtPosition(menu, u.win.Canvas(), fyne.NewPos(pos.X, pos.Y+more.Size().Height))
+	}
+	return more
+}
+
+// afterDBOp er den fælles done-callback for database-operationer: log output,
+// vis evt. fejl, og genopbyg listen ved succes.
+func (u *ui) afterDBOp(v any) {
+	r := v.(result)
+	u.log(r.Combined())
+	if r.Err != nil {
+		dialog.ShowError(errSimple(describeErr(r)), u.win)
+		return
+	}
+	u.refreshDatabases()
+}
+
+// pushDatabase kører `push` (kun upload) for databasen efter at have bedt om
+// masterpasswordet.
+func (u *ui) pushDatabase(db database) {
+	u.promptDBPassword(L.PushNow+" — "+db.Name, L.PushNow, db.Name, func(name, pw string) {
+		u.log("push " + name + " …")
+		u.async(func() any {
+			ctx, cancel := withTimeout(10 * time.Minute)
+			defer cancel()
+			return u.c.push(ctx, name, pw)
+		}, u.afterDBOp)
+	})
+}
+
+// pullDatabase kører `pull` (kun download) for databasen efter at have bedt om
+// masterpasswordet.
+func (u *ui) pullDatabase(db database) {
+	u.promptDBPassword(L.PullNow+" — "+db.Name, L.PullNow, db.Name, func(name, pw string) {
+		u.log("pull " + name + " …")
+		u.async(func() any {
+			ctx, cancel := withTimeout(10 * time.Minute)
+			defer cancel()
+			return u.c.pull(ctx, name, pw)
+		}, u.afterDBOp)
+	})
+}
+
+// promptDBPassword viser en password-dialog og kalder run(name, pw) hvis brugeren
+// bekræfter med et udfyldt felt.
+func (u *ui) promptDBPassword(title, confirm, name string, run func(name, pw string)) {
+	pw := widget.NewPasswordEntry()
+	items := []*widget.FormItem{widget.NewFormItem(L.MasterPwd, pw)}
+	u.showFormDialog(title, confirm, items, func(ok bool) {
+		if !ok || pw.Text == "" {
+			return
+		}
+		run(name, pw.Text)
+	})
+}
+
+// deleteDatabaseServer sletter databasen PERMANENT på serveren via
+// `delete-database`. Til forskel fra forget (lokal binding) fjerner dette alt
+// server-side for alle brugere — derfor en kraftig bekræftelse. UUID foretrækkes
+// som mål (virker også for ikke-bundne databaser), med navn som fallback.
+func (u *ui) deleteDatabaseServer(db database) {
+	msg := fmt.Sprintf(L.ConfirmDeleteServer, db.Name)
+	dialog.ShowConfirm(L.DeleteOnServer, msg, func(ok bool) {
+		if !ok {
+			return
+		}
+		target := db.ID
+		if target == "" {
+			target = db.Name
+		}
+		u.async(func() any {
+			ctx, cancel := withTimeout(60 * time.Second)
+			defer cancel()
+			return u.c.deleteDatabase(ctx, target)
+		}, u.afterDBOp)
 	}, u.win)
 }
 
@@ -543,6 +651,123 @@ func (u *ui) activityTab() fyne.CanvasObject {
 	return container.NewBorder(header, nil, nil, nil, u.activity)
 }
 
+// logResult bærer log-listen tilbage fra goroutinen.
+type logResult struct {
+	es []logEntry
+	r  result
+}
+
+// logTab viser serverens audit-log (`keepass-deltasync log`). I modsætning til
+// Aktivitet-fanen — der kun spejler CLI-output siden app-start — er dette den
+// VEDVARENDE historik fra serveren (op til 30 dage, på tværs af enheder). En
+// periode-vælger styrer --since; Opdatér henter på ny.
+func (u *ui) logTab() fyne.CanvasObject {
+	u.logInfo = widget.NewLabel("")
+	u.logBox = container.NewVBox()
+
+	// Vis-tekst → Go-duration til `log --since`. Tom = intet filter (alle).
+	sinceFor := map[string]string{
+		L.LogPeriod24h: "24h",
+		L.LogPeriod7d:  "168h",
+		L.LogPeriod30d: "720h",
+		L.LogPeriodAll: "",
+	}
+	sel := widget.NewSelect(
+		[]string{L.LogPeriod24h, L.LogPeriod7d, L.LogPeriod30d, L.LogPeriodAll},
+		func(s string) {
+			u.logSince = sinceFor[s]
+			u.refreshLog()
+		},
+	)
+	sel.SetSelected(L.LogPeriod7d) // udløser første hentning
+
+	refresh := widget.NewButton(L.Refresh, func() { u.refreshLog() })
+	toolbar := container.NewHBox(widget.NewLabel(L.LogPeriodLabel), sel, layout.NewSpacer(), refresh)
+	top := container.NewVBox(toolbar, widget.NewLabel(L.LogHint), u.logInfo)
+
+	return container.NewBorder(top, nil, nil, nil, container.NewVScroll(u.logBox))
+}
+
+// logRow bygger én audit-linje: OK/fejl-markør + tidspunkt + event (fremhævet) +
+// niveau + IP, med faste kolonnebredder så felterne flugter på tværs af rækker.
+// Yderst til højre en info-knap der åbner en popup med alle felter i fuld
+// længde — så intet er skjult selvom en kolonne afkortes.
+func (u *ui) logRow(e logEntry) fyne.CanvasObject {
+	mark := "✓"
+	if !e.OK {
+		mark = "✗"
+	}
+	markLbl := widget.NewLabel(mark)
+	timeLbl := widget.NewLabel(prettyTime(e.Time))
+	eventLbl := widget.NewLabelWithStyle(e.Event, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	eventLbl.Truncation = fyne.TextTruncateEllipsis
+	levelLbl := widget.NewLabel(e.Level)
+	ipLbl := widget.NewLabel(e.IP) // ingen afkortning: en IP er kort og skal vises helt
+
+	cols := container.New(&columnsLayout{widths: []float32{26, 140, 180, 70}},
+		markLbl, timeLbl, eventLbl, levelLbl, ipLbl)
+
+	info := newHintIconButton(L.LogDetailsTitle, theme.InfoIcon(), func() { u.showLogDetails(e) }, func(string) {})
+	header := container.NewBorder(nil, nil, cols, info, nil)
+	return container.NewVBox(header, widget.NewSeparator())
+}
+
+// showLogDetails viser alle felter for én log-post i en popup — med fuldt
+// tidsstempel (sekunder), hele event-navnet og IP'en, så intet afkortes væk.
+func (u *ui) showLogDetails(e logEntry) {
+	status := L.LogOK
+	if !e.OK {
+		status = L.LogFail
+	}
+	ip := e.IP
+	if ip == "" {
+		ip = "—"
+	}
+	form := widget.NewForm(
+		widget.NewFormItem(L.LogColTime, widget.NewLabel(prettyTimeSec(e.Time))),
+		widget.NewFormItem(L.LogColEvent, widget.NewLabel(e.Event)),
+		widget.NewFormItem(L.ColStatus, widget.NewLabel(status)),
+		widget.NewFormItem(L.LogColLevel, widget.NewLabel(e.Level)),
+		widget.NewFormItem(L.LogColIP, widget.NewLabel(ip)),
+	)
+	dlg := dialog.NewCustom(L.LogDetailsTitle, L.Close, container.NewPadded(form), u.win)
+	dlg.Resize(fyne.NewSize(520, 280))
+	dlg.Show()
+}
+
+// refreshLog henter `log --since=<periode>` og genopbygger log-listen.
+func (u *ui) refreshLog() {
+	if u.logBox == nil {
+		return
+	}
+	u.logInfo.SetText(L.Working)
+	since := u.logSince
+	u.async(func() any {
+		ctx, cancel := withTimeout(30 * time.Second)
+		defer cancel()
+		es, r := u.c.logEntries(ctx, since, 200)
+		return logResult{es: es, r: r}
+	}, func(v any) {
+		res := v.(logResult)
+		u.logBox.RemoveAll()
+		if res.r.Err != nil {
+			u.log(res.r.Combined())
+			u.logInfo.SetText(L.Error + ": " + describeErr(res.r))
+			u.logBox.Add(widget.NewLabel(L.Error + ": " + describeErr(res.r)))
+			u.logBox.Refresh()
+			return
+		}
+		u.logInfo.SetText(fmt.Sprintf(L.LogCount, len(res.es)))
+		if len(res.es) == 0 {
+			u.logBox.Add(widget.NewLabel(L.LogEmpty))
+		}
+		for _, e := range res.es {
+			u.logBox.Add(u.logRow(e))
+		}
+		u.logBox.Refresh()
+	})
+}
+
 // settingsTab samler status, sprog, CLI-sti og nulstilling.
 func (u *ui) settingsTab() fyne.CanvasObject {
 	statusCard := widget.NewCard(L.StatusBox, "", u.statusLb)
@@ -572,6 +797,29 @@ func (u *ui) settingsTab() fyne.CanvasObject {
 		u.showDashboard() // genopbyg med nye tekster
 	}
 
+	// Tema-vælger: System (følg OS), Lyst eller Mørkt. Samme mønster som sproget
+	// — sæt .Selected stille før OnChanged, så den indledende værdi ikke udløser
+	// callbacken. Temaet anvendes live (SetTheme genmaler UI'en), så her er ingen
+	// genopbygning af dashboardet nødvendig.
+	themeLabels := []string{L.ThemeSystem, L.ThemeLight, L.ThemeDark}
+	themeFor := map[string]string{L.ThemeSystem: themeSystem, L.ThemeLight: themeLight, L.ThemeDark: themeDark}
+	labelFor := map[string]string{themeSystem: L.ThemeSystem, themeLight: L.ThemeLight, themeDark: L.ThemeDark}
+	themeSel := widget.NewSelect(themeLabels, nil)
+	if lbl, ok := labelFor[u.set.Theme]; ok {
+		themeSel.Selected = lbl
+	} else {
+		themeSel.Selected = L.ThemeSystem
+	}
+	themeSel.OnChanged = func(choice string) {
+		mode := themeFor[choice]
+		if mode == u.set.Theme {
+			return // ingen reel ændring
+		}
+		u.set.Theme = mode
+		_ = saveSettings(u.set)
+		applyTheme(u.fApp, mode)
+	}
+
 	cliPath := widget.NewEntry()
 	cliPath.SetText(u.c.path)
 	cliBrowse := widget.NewButton(L.Browse, func() {
@@ -591,13 +839,40 @@ func (u *ui) settingsTab() fyne.CanvasObject {
 
 	form := widget.NewForm(
 		widget.NewFormItem(L.Language, langSel),
+		widget.NewFormItem(L.ThemeLabel, themeSel),
 		widget.NewFormItem(L.CLIPathLabel, cliRow),
 	)
+
+	// Hjælpe-panel: vis et wiki-agtigt felt i bunden med en beskrivelse af den
+	// aktuelle fane. Sæt .Checked stille (ikke SetChecked, der ville udløse
+	// OnChanged under opbygningen). Skiftet genopbygger dashboardet, så panelet
+	// vises/skjules og vinduet justeres med det samme.
+	helpCheck := widget.NewCheck(L.HelpPanelLabel, nil)
+	helpCheck.Checked = u.set.ShowHelpPanel
+	helpCheck.OnChanged = func(on bool) {
+		if on == helpEnabled {
+			return
+		}
+		helpEnabled = on
+		u.set.ShowHelpPanel = on
+		_ = saveSettings(u.set)
+		if on {
+			u.win.Resize(fyne.NewSize(820, 760))
+		} else {
+			u.win.Resize(fyne.NewSize(820, 560))
+		}
+		u.showDashboard() // genopbyg med/uden panelet
+	}
+	helpDesc := widget.NewLabel(L.HelpPanelDesc)
+	helpDesc.Wrapping = fyne.TextWrapWord
 
 	return container.NewVScroll(container.NewVBox(
 		statusCard,
 		widget.NewSeparator(),
 		form,
+		widget.NewSeparator(),
+		helpCheck,
+		helpDesc,
 	))
 }
 

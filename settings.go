@@ -13,8 +13,10 @@ import (
 // CLI'en og ligger i dens egen config.toml. Her gemmer vi kun to ting: hvor
 // CLI'en ligger, og hvilket sprog UI'en skal vise.
 type settings struct {
-	CLIPath  string `json:"cli_path"`
-	Language string `json:"language"`
+	CLIPath       string `json:"cli_path"`
+	Language      string `json:"language"`
+	Theme         string `json:"theme"`           // "system" (følg OS), "light" eller "dark"
+	ShowHelpPanel bool   `json:"show_help_panel"` // vis wiki-agtigt hjælpe-panel i bunden
 }
 
 // settingsPath er <os-config-dir>/keepass-deltasync-gui/gui.json.
