@@ -179,6 +179,18 @@ type dict struct {
 	HelpSettings      string
 	ResetEnroll       string
 
+	// Autostart (Indstillinger): OS-opsætning der kører `daemon` ved login.
+	AutostartTitle       string
+	AutostartDesc        string
+	AutostartEnable      string
+	AutostartDisable     string
+	AutostartOn          string
+	AutostartOff         string
+	AutostartUnsupported string
+	AutostartNoCLI       string
+	AutostartEnabled     string
+	AutostartDisabled    string
+
 	// Administration-fane
 	AdminHint         string
 	AdminNeedToken    string
@@ -401,12 +413,25 @@ var dicts = map[lang]*dict{
 			"- **Sprog** — dansk eller engelsk.\n" +
 			"- **Tema** — System (følg styresystemet), Lyst eller Mørkt.\n" +
 			"- **Sti til CLI** — hvor `keepass-deltasync`-programmet ligger. GUI'en kalder det til alt arbejde.\n" +
-			"- **Vis hjælpe-panel** — dette felt.\n\n" +
+			"- **Vis hjælpe-panel** — dette felt.\n" +
+			"- **Autostart** — få styresystemet til at køre `keepass-deltasync daemon` ved login, så baggrunds-synkroniseringen kører uden at GUI'en er åben. Opsættes i dit eget brugerområde (en \"ved logon\"-opgave i Opgaveplanlægning på Windows, launchd på macOS, systemd --user på Linux) — ingen administrator nødvendig. På Windows venter opgaven kort på netværket og genstarter daemonen hvis den dør. GUI'en kører aldrig selv daemonen.\n\n" +
 			"GUI'en er en skal oven på `keepass-deltasync`-kommandolinjen; al krypto, server-kald og config ligger i CLI'en.\n\n" +
 			"**Nyttige CLI-kommandoer:**\n\n" +
 			"- `keepass-deltasync status`\n" +
 			"- `keepass-deltasync enroll --server <url> <token>`",
 		ResetEnroll: "Nulstil tilmelding",
+
+		AutostartTitle: "Autostart",
+		AutostartDesc: "Kør baggrunds-synkroniseringen (`keepass-deltasync daemon`) automatisk ved login, " +
+			"uden at denne app skal være åben. Opsættes i dit eget brugerområde — ingen administrator nødvendig.",
+		AutostartEnable:      "Aktivér autostart",
+		AutostartDisable:     "Deaktivér autostart",
+		AutostartOn:          "Autostart er aktiv — daemonen starter ved login.",
+		AutostartOff:         "Autostart er ikke aktiv.",
+		AutostartUnsupported: "Autostart understøttes ikke på dette styresystem.",
+		AutostartNoCLI:       "Find først keepass-deltasync-programmet (Sti til CLI ovenfor).",
+		AutostartEnabled:     "Autostart aktiveret.",
+		AutostartDisabled:    "Autostart deaktiveret.",
 
 		AdminHint:         "Brugeradministration. Kræver en admin-token (gemmes ikke på disk).",
 		AdminNeedToken:    "Indtast en admin-token og klik 'Hent brugere'.",
@@ -626,12 +651,25 @@ var dicts = map[lang]*dict{
 			"- **Language** — Danish or English.\n" +
 			"- **Theme** — System (follow the OS), Light or Dark.\n" +
 			"- **CLI path** — where the `keepass-deltasync` program lives. The GUI calls it for all work.\n" +
-			"- **Show help panel** — this panel.\n\n" +
+			"- **Show help panel** — this panel.\n" +
+			"- **Autostart** — have the operating system run `keepass-deltasync daemon` at login, so background sync runs without the GUI being open. Set up in your own user scope (registry Run key on Windows, launchd on macOS, systemd --user on Linux) — no administrator needed. The GUI never runs the daemon itself.\n\n" +
 			"The GUI is a shell over the `keepass-deltasync` command line; all crypto, server calls and config live in the CLI.\n\n" +
 			"**Useful CLI commands:**\n\n" +
 			"- `keepass-deltasync status`\n" +
 			"- `keepass-deltasync enroll --server <url> <token>`",
 		ResetEnroll: "Reset enrollment",
+
+		AutostartTitle: "Autostart",
+		AutostartDesc: "Run background sync (`keepass-deltasync daemon`) automatically at login, " +
+			"without this app being open. Set up in your own user scope — no administrator needed.",
+		AutostartEnable:      "Enable autostart",
+		AutostartDisable:     "Disable autostart",
+		AutostartOn:          "Autostart is on — the daemon starts at login.",
+		AutostartOff:         "Autostart is off.",
+		AutostartUnsupported: "Autostart is not supported on this operating system.",
+		AutostartNoCLI:       "Locate the keepass-deltasync program first (CLI path above).",
+		AutostartEnabled:     "Autostart enabled.",
+		AutostartDisabled:    "Autostart disabled.",
 
 		AdminHint:         "User administration. Requires an admin token (not stored on disk).",
 		AdminNeedToken:    "Enter an admin token and click 'Load users'.",

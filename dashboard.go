@@ -873,7 +873,79 @@ func (u *ui) settingsTab() fyne.CanvasObject {
 		widget.NewSeparator(),
 		helpCheck,
 		helpDesc,
+		widget.NewSeparator(),
+		u.autostartSection(),
 	))
+}
+
+// autostartSection bygger Autostart-blokken til Indstillinger: en status-linje og
+// en knap der slår autostart til/fra (`keepass-deltasync daemon` ved login).
+// Statussen hentes asynkront, og knappen skifter rolle efter hvad der er sat op.
+func (u *ui) autostartSection() fyne.CanvasObject {
+	title := widget.NewLabelWithStyle(L.AutostartTitle, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	desc := widget.NewLabel(L.AutostartDesc)
+	desc.Wrapping = fyne.TextWrapWord
+
+	if !autostartSupported() {
+		return container.NewVBox(title, widget.NewLabel(L.AutostartUnsupported), desc)
+	}
+
+	info := widget.NewLabel(L.Working)
+	btn := widget.NewButton("", nil)
+	btn.Disable()
+
+	var refresh func()
+	apply := func(installed bool) {
+		if installed {
+			info.SetText(L.AutostartOn)
+			btn.SetText(L.AutostartDisable)
+			btn.Importance = widget.MediumImportance
+			btn.OnTapped = func() { u.autostartToggle(false, refresh) }
+		} else {
+			info.SetText(L.AutostartOff)
+			btn.SetText(L.AutostartEnable)
+			btn.Importance = widget.HighImportance
+			btn.OnTapped = func() { u.autostartToggle(true, refresh) }
+		}
+		btn.Enable()
+		btn.Refresh()
+	}
+	refresh = func() {
+		info.SetText(L.Working)
+		btn.Disable()
+		u.async(func() any {
+			inst, _ := autostartInstalled()
+			return inst
+		}, func(v any) { apply(v.(bool)) })
+	}
+	refresh()
+
+	return container.NewVBox(title, info, btn, desc)
+}
+
+// autostartToggle slår autostart til (enable=true) eller fra og opdaterer status.
+// Kræver en kendt CLI-sti ved aktivering — den indgår i opgaven/servicen.
+func (u *ui) autostartToggle(enable bool, refresh func()) {
+	if enable && u.c.path == "" {
+		dialog.ShowError(errSimple(L.AutostartNoCLI), u.win)
+		return
+	}
+	path := u.c.path
+	u.async(func() any {
+		if enable {
+			return autostartEnable(path)
+		}
+		return autostartDisable()
+	}, func(v any) {
+		if err, ok := v.(error); ok && err != nil {
+			dialog.ShowError(err, u.win)
+		} else if enable {
+			u.log(L.AutostartEnabled)
+		} else {
+			u.log(L.AutostartDisabled)
+		}
+		refresh()
+	})
 }
 
 // refreshStatus henter `status` og opdaterer status-labelen.
