@@ -66,6 +66,18 @@ type dict struct {
 	WizardDone         string
 	WizardDoneBody     string
 
+	// Avanceret tilmelding (administrator udsteder token + enroller PC'en)
+	WizardAdvanced     string
+	WizardStepAdvanced string
+	AdvancedIntro      string
+	AdvUserMode        string
+	AdvExistingUser    string
+	AdvNewUser         string
+	AdvEnrollButton    string
+	AdvIssuingToken    string
+	AdvEnrolling       string
+	AdvNoTokenErr      string
+
 	// Dashboard
 	TabDatabases string
 	TabDevices   string
@@ -258,6 +270,18 @@ var dicts = map[lang]*dict{
 		SkipForNow:       "Spring over",
 		WizardDone:       "Alt klar!",
 		WizardDoneBody:   "Du er klar til at synkronisere. Brug knappen 'Synkronisér' på en database for at sende og hente ændringer.",
+
+		WizardAdvanced:     "Avanceret (administrator)…",
+		WizardStepAdvanced: "Avanceret tilmelding — administrator",
+		AdvancedIntro: "Har du et admin-token, kan du udstede et enrollment-token og tilmelde denne PC i ét hug — " +
+			"du behøver ikke et token på forhånd. Vælg en eksisterende bruger, eller opret en ny.",
+		AdvUserMode:     "Bruger",
+		AdvExistingUser: "Eksisterende bruger",
+		AdvNewUser:      "Opret ny bruger",
+		AdvEnrollButton: "Udsted token og tilmeld denne PC",
+		AdvIssuingToken: "Udsteder enrollment-token…",
+		AdvEnrolling:    "Tilmelder denne PC…",
+		AdvNoTokenErr:   "Kunne ikke udlæse enrollment-tokenet fra serverens svar. Se loggen for detaljer.",
 
 		TabDatabases: "Databaser",
 		TabDevices:   "Enheder",
@@ -496,6 +520,18 @@ var dicts = map[lang]*dict{
 		SkipForNow:       "Skip for now",
 		WizardDone:       "All set!",
 		WizardDoneBody:   "You're ready to sync. Use the 'Sync' button on a database to send and fetch changes.",
+
+		WizardAdvanced:     "Advanced (administrator)…",
+		WizardStepAdvanced: "Advanced enrollment — administrator",
+		AdvancedIntro: "If you have an admin token, you can issue an enrollment token and enroll this PC in one step — " +
+			"no token needed up front. Pick an existing user, or create a new one.",
+		AdvUserMode:     "User",
+		AdvExistingUser: "Existing user",
+		AdvNewUser:      "Create new user",
+		AdvEnrollButton: "Issue token & enroll this PC",
+		AdvIssuingToken: "Issuing enrollment token…",
+		AdvEnrolling:    "Enrolling this PC…",
+		AdvNoTokenErr:   "Could not read the enrollment token from the server's response. See the log for details.",
 
 		TabDatabases: "Databases",
 		TabDevices:   "Devices",

@@ -177,7 +177,7 @@ func (u *ui) adminNewEnrollment(usr adminUser) {
 	u.async(func() any {
 		ctx, cancel := withTimeout(30 * time.Second)
 		defer cancel()
-		return u.c.adminUserEnrollment(ctx, tok, name)
+		return u.c.adminUserEnrollment(ctx, "", tok, name)
 	}, func(v any) {
 		r := v.(result)
 		u.log(r.Combined())
@@ -210,7 +210,7 @@ func (u *ui) adminCreateUser() {
 		u.async(func() any {
 			ctx, cancel := withTimeout(30 * time.Second)
 			defer cancel()
-			return u.c.adminUserCreate(ctx, tok, name, disp)
+			return u.c.adminUserCreate(ctx, "", tok, name, disp)
 		}, func(v any) {
 			r := v.(result)
 			u.log(r.Combined())

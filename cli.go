@@ -502,18 +502,50 @@ func (c *cli) adminUserList(ctx context.Context, adminToken string) ([]adminUser
 	return out, r
 }
 
-// adminUserCreate spejler `admin user-create <username> [--display-name N] --admin-token <tok>`.
-func (c *cli) adminUserCreate(ctx context.Context, adminToken, username, displayName string) result {
+// adminUserCreate spejler `admin user-create <username> [--display-name N] [--server URL] --admin-token <tok>`.
+// server er normalt tom (URL'en læses fra config.toml); den avancerede tilmelding
+// sender den eksplicit, da den kører på en maskine der endnu ikke er enrolled.
+func (c *cli) adminUserCreate(ctx context.Context, server, adminToken, username, displayName string) result {
 	args := []string{"admin", "user-create", username, "--admin-token", adminToken}
+	if server != "" {
+		args = append(args, "--server", server)
+	}
 	if displayName != "" {
 		args = append(args, "--display-name", displayName)
 	}
 	return c.run(ctx, "", args...)
 }
 
-// adminUserEnrollment spejler `admin user-enrollment <username> --admin-token <tok>`.
-func (c *cli) adminUserEnrollment(ctx context.Context, adminToken, username string) result {
-	return c.run(ctx, "", "admin", "user-enrollment", username, "--admin-token", adminToken)
+// adminUserEnrollment spejler `admin user-enrollment <username> [--server URL] --admin-token <tok>`.
+// server er normalt tom (læses fra config.toml); avanceret tilmelding sender den
+// eksplicit på en frisk maskine.
+func (c *cli) adminUserEnrollment(ctx context.Context, server, adminToken, username string) result {
+	args := []string{"admin", "user-enrollment", username, "--admin-token", adminToken}
+	if server != "" {
+		args = append(args, "--server", server)
+	}
+	return c.run(ctx, "", args...)
+}
+
+// parseEnrollToken trækker enrollment-tokenet ud af outputtet fra `admin
+// user-create` og `admin user-enrollment`. Begge kommandoer afslutter med en
+// linje på formen
+//
+//	keepass-deltasync enroll --server <url> <token>
+//
+// hvor tokenet er sidste felt — et stabilt anker på tværs af begge outputs.
+// Returnerer tom streng hvis ingen sådan linje findes.
+func parseEnrollToken(stdout string) string {
+	for _, line := range strings.Split(stdout, "\n") {
+		t := strings.TrimSpace(strings.TrimRight(line, "\r\n"))
+		if strings.Contains(t, "enroll --server ") {
+			f := strings.Fields(t)
+			if len(f) > 0 {
+				return f[len(f)-1]
+			}
+		}
+	}
+	return ""
 }
 
 // adminSetDisabled spejler `admin user-disable|user-enable <username> --admin-token <tok>`.

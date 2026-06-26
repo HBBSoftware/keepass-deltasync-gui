@@ -26,14 +26,129 @@ func (u *ui) showWizard() {
 	start := widget.NewButton(L.WizardStart, func() { u.showEnrollStep() })
 	start.Importance = widget.HighImportance
 
+	// Sekundær vej for administratorer: udsted token + tilmeld PC'en i ét hug.
+	advanced := widget.NewButton(L.WizardAdvanced, func() { u.showAdvancedEnroll() })
+	advanced.Importance = widget.LowImportance
+
 	card := container.NewVBox(
 		title,
 		widget.NewSeparator(),
 		body,
 		layout.NewSpacer(),
 		container.NewHBox(layout.NewSpacer(), start, layout.NewSpacer()),
+		container.NewHBox(layout.NewSpacer(), advanced, layout.NewSpacer()),
 	)
 	u.win.SetContent(container.NewPadded(card))
+}
+
+// showAdvancedEnroll er en alternativ trin 1 for administratorer: i stedet for at
+// indtaste et færdigt enrollment-token udfyldes server-adresse + admin-token +
+// brugernavn, hvorefter GUI'en bag kulisserne (1) udsteder et enrollment-token
+// via `admin user-create`/`user-enrollment` og (2) kører `enroll` med det. Bagefter
+// fortsætter den til trin 2 (tilføj database) som det normale flow.
+func (u *ui) showAdvancedEnroll() {
+	server := widget.NewEntry()
+	server.SetPlaceHolder(L.ServerURLHint)
+	adminTok := widget.NewPasswordEntry()
+	adminTok.SetPlaceHolder(L.AdminToken)
+	adminTok.SetText(u.adminToken) // genbrug et token der allerede ligger i hukommelsen
+	username := widget.NewEntry()
+	username.SetPlaceHolder(L.Username)
+	display := widget.NewEntry()
+	display.SetPlaceHolder(L.AdminDisplayName)
+	device := widget.NewEntry()
+	device.SetPlaceHolder(L.DeviceNameHint)
+
+	// Visningsnavn er kun relevant når vi opretter en ny bruger.
+	mode := widget.NewRadioGroup([]string{L.AdvExistingUser, L.AdvNewUser}, nil)
+	mode.SetSelected(L.AdvExistingUser)
+	syncDisplay := func(sel string) {
+		if sel == L.AdvNewUser {
+			display.Enable()
+		} else {
+			display.Disable()
+		}
+	}
+	mode.OnChanged = syncDisplay
+	syncDisplay(mode.Selected)
+
+	intro := widget.NewLabel(L.AdvancedIntro)
+	intro.Wrapping = fyne.TextWrapWord
+
+	form := widget.NewForm(
+		widget.NewFormItem(L.ServerURL, server),
+		widget.NewFormItem(L.AdminToken, adminTok),
+		widget.NewFormItem(L.AdvUserMode, mode),
+		widget.NewFormItem(L.Username, username),
+		widget.NewFormItem(L.AdminDisplayName, display),
+		widget.NewFormItem(L.DeviceName, device),
+	)
+
+	submit := widget.NewButton(L.AdvEnrollButton, func() {
+		if server.Text == "" || adminTok.Text == "" || username.Text == "" {
+			dialog.ShowError(errSimple(L.ServerURL+" / "+L.AdminToken+" / "+L.Username), u.win)
+			return
+		}
+		u.adminToken = adminTok.Text // husk tokenet som Administration-fanen gør
+		srv, tok, usr := server.Text, adminTok.Text, username.Text
+		disp, dev := display.Text, device.Text
+		newUser := mode.Selected == L.AdvNewUser
+
+		// Trin A: udsted enrollment-token via admin-kommandoen.
+		u.win.SetContent(centeredSpinner(L.AdvIssuingToken))
+		u.async(func() any {
+			ctx, cancel := withTimeout(60 * time.Second)
+			defer cancel()
+			if newUser {
+				return u.c.adminUserCreate(ctx, srv, tok, usr, disp)
+			}
+			return u.c.adminUserEnrollment(ctx, srv, tok, usr)
+		}, func(v any) {
+			r := v.(result)
+			u.log(r.Combined())
+			if r.Err != nil {
+				u.showAdvancedEnroll()
+				dialog.ShowError(errSimple(describeErr(r)), u.win)
+				return
+			}
+			enrollTok := parseEnrollToken(r.Stdout)
+			if enrollTok == "" {
+				u.showAdvancedEnroll()
+				dialog.ShowError(errSimple(L.AdvNoTokenErr), u.win)
+				return
+			}
+			// Trin B: tilmeld denne PC med det netop udstedte token.
+			u.win.SetContent(centeredSpinner(L.AdvEnrolling))
+			u.async(func() any {
+				ctx, cancel := withTimeout(60 * time.Second)
+				defer cancel()
+				return u.c.enroll(ctx, srv, dev, enrollTok)
+			}, func(v2 any) {
+				er := v2.(result)
+				u.log(er.Combined())
+				if er.Err != nil {
+					u.showAdvancedEnroll()
+					dialog.ShowError(errSimple(describeErr(er)), u.win)
+					return
+				}
+				u.showAddDBStep()
+			})
+		})
+	})
+	submit.Importance = widget.HighImportance
+
+	header := widget.NewLabelWithStyle(L.WizardStepAdvanced, fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	back := widget.NewButton(L.Back, func() { u.showWizard() })
+
+	content := container.NewVBox(
+		header,
+		widget.NewSeparator(),
+		intro,
+		form,
+		layout.NewSpacer(),
+		container.NewHBox(back, layout.NewSpacer(), submit),
+	)
+	u.win.SetContent(container.NewPadded(content))
 }
 
 // showEnrollStep er trin 1: tilmeld enheden hos serveren.
